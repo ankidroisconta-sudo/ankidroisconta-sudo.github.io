@@ -69,8 +69,8 @@
     G.limb(ctx, [[26, -176], [28, -90], [30, -22]], { color: pant, lw: 34, seed: sd + 2 });
     G.ellipse(ctx, -34, -6, 30, 14, { fill: '#F4F4F2', lw: 4, seed: sd + 3 }); G.ellipse(ctx, 34, -6, 30, 14, { fill: '#F4F4F2', lw: 4, seed: sd + 4 });
     // tronco
-    if (kind === 'nina') G.poly(ctx, [[-52, -342], [52, -342], [92, -150], [-92, -150]], { fill: '#E8B04C', lw: 5, seed: sd + 5, hatch: HATCH });
-    else G.rrect(ctx, -58, -345, 116, 185, 30, { fill: mix('#7FB1DE', '#C9D8E6', pale), lw: 5, seed: sd + 5, hatch: HATCH });
+    if (kind === 'nina') G.poly(ctx, [[-52, -342], [52, -342], [92, -150], [-92, -150]], { fill: '#A8A8A8', lw: 5, seed: sd + 5, hatch: HATCH });
+    else G.rrect(ctx, -58, -345, 116, 185, 30, { fill: mix('#B9B9B9', '#E2E2E2', pale), lw: 5, seed: sd + 5, hatch: HATCH });
     // braços
     const A = ARMS[arms] || ARMS.down;
     A.forEach(([el, ha], i) => { const sx = i ? 58 : -58; G.limb(ctx, [[sx, -318], el, ha], { color: skin, lw: 26, seed: sd + 6 + i }); G.ellipse(ctx, ha[0], ha[1], 16, 16, { fill: skin, lw: 4, seed: sd + 8 + i }); });
@@ -146,6 +146,34 @@
     if (tx !== undefined) arrow(ctx, x, y + 12 + (ls.length - 1) * size * 1.05, tx, ty, ease.inOutQuad(clamp((t - t0 - 0.2) / 0.5)), seed);
   };
 
+
+  // ---------- filtro "rabisco": cinzas viram hachura cruzada de caneta; só vermelho, azul e verde mantêm cor ----------
+  function sketch(ctx, t) {
+    const Wp = ctx.canvas.width, Hp = ctx.canvas.height, k = Wp / 1920;
+    const img = ctx.getImageData(0, 0, Wp, Hp), d = img.data;
+    const f = Math.floor(t * 8), ox = (f * 5) % 11, oy = (f * 3) % 13, P = Math.max(6, Math.round(8 * k)), th = Math.max(2, Math.round(2.2 * k));
+    for (let y = 0; y < Hp; y++) {
+      const wy = Math.round(Math.sin(y * 0.045 + f) * 2.2 * k);
+      for (let x = 0; x < Wp; x++) {
+        const i = (y * Wp + x) * 4, r = d[i], g = d[i + 1], b = d[i + 2];
+        const mx = Math.max(r, g, b), mn = Math.min(r, g, b), sat = mx - mn, lum = 0.3 * r + 0.59 * g + 0.11 * b;
+        const keep = sat > 45 && ((r > g + 40 && r > b + 40) || (b > r + 25) || (g > r + 25 && g > b + 10));
+        const xx = x + wy;
+        if (keep) { if (r > g + 40 && r > b + 40 && ((xx + y + ox) % P) < 1.4 * k + 1) { d[i] = r * 0.62; d[i + 1] = g * 0.55; d[i + 2] = b * 0.55; } continue; }
+        if (lum < 60 || lum > 238) continue; // tinta e papel ficam como estão
+        const L = lum / 255;
+        let ink = ((xx + y + ox) % P) < th && L < 0.9;
+        if (!ink && L < 0.72) ink = (((xx - y + oy + 8192) % P) < th);
+        if (!ink && L < 0.5) ink = (((xx + y + ox + (P >> 1)) % P) < th);
+        if (!ink && L < 0.32) ink = ((xx + y) % 3) === 0;
+        if (ink && ((((x >> 1) * 73856093) ^ ((y >> 1) * 19349663) ^ (f * 83492791)) >>> 0) % 100 < 9) ink = false; // traço falhado, como caneta
+        const v = ink ? 30 : 246;
+        d[i] = v; d[i + 1] = v; d[i + 2] = v - (ink ? 0 : 4);
+      }
+    }
+    ctx.putImageData(img, 0, 0);
+  }
+
   // ---------- cenas ----------
   function rua(ctx, t) {
     // rua em perspectiva, como um desenho de caneta
@@ -155,8 +183,8 @@
     G.line(ctx, [[0, 1000], [920, 560], [1920, 560]], { lw: 5, seed: 811 });
     G.line(ctx, [[0, 1080], [1000, 700], [1920, 700]], { lw: 5, seed: 812 });
     // poste com luz azul
-    const gl = ctx.createRadialGradient(1640, 230, 10, 1640, 400, 460); gl.addColorStop(0, 'rgba(120,170,230,0.55)'); gl.addColorStop(1, 'rgba(120,170,230,0)');
-    ctx.fillStyle = gl; ctx.fillRect(1100, 0, 820, 900);
+    const gl = ctx.createRadialGradient(1600, 300, 10, 1600, 400, 300); gl.addColorStop(0, 'rgba(120,170,230,0.55)'); gl.addColorStop(1, 'rgba(120,170,230,0)');
+    ctx.fillStyle = gl; ctx.fillRect(1250, 0, 650, 800);
     G.rrect(ctx, 1840, 200, 16, 700, 4, { fill: '#999', lw: 5, seed: 830 }); G.shape(ctx, [[1860, 200], [1700, 190], [1650, 225], [1860, 232]], { fill: '#FFF', lw: 5, seed: 831 });
     // relógio redondo: 23:10
     G.ellipse(ctx, 1700, 100, 62, 62, { fill: INK, lw: 5, seed: 840 });
@@ -165,7 +193,7 @@
     // poças e chuva
     for (const [px, py, pw] of [[1000, 860, 220], [1560, 940, 260], [1300, 1010, 200]]) G.ellipse(ctx, px, py, pw, pw * 0.1, { fill: '#BCD9F2', lw: 3, seed: px, hatch: null });
     ctx.save(); ctx.strokeStyle = 'rgba(100,150,210,0.7)'; ctx.lineWidth = 3;
-    for (let i = 0; i < 90; i++) { const x = (hh(i, 1) * 2100 - 100 + t * 60) % 2000, y = (hh(i, 2) * 1100 + t * 900) % 1100; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x - 8, y + 30); ctx.stroke(); }
+    for (let i = 0; i < 90; i++) { const x = (hh(i, 1) * 1900 + t * 60) % 1900, y = (hh(i, 2) * 1100 + t * 900) % 1100; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x - 8, y + 30); ctx.stroke(); }
     ctx.restore();
     // personagens
     const a = appear(t, 0.6, 0.6);
@@ -261,7 +289,7 @@
 
   let SUBS = [];
   Studio.film({
-    async init() { const vo = await Studio.loadJSON('out/voice.json'); SUBS = globalThis.Subs ? globalThis.Subs.fromVoice(vo, { maxWords: 6, hold: 0.3 }) : []; },
+    async init() { G.setStyle('paper', { amp: 2.4, boilFps: 8 }); const vo = await Studio.loadJSON('out/voice.json'); SUBS = globalThis.Subs ? globalThis.Subs.fromVoice(vo, { maxWords: 6, hold: 0.3 }) : []; },
     draw(ctx, t) {
       ctx.fillStyle = '#FAFAF7'; ctx.fillRect(0, 0, G.W, G.H);
       ctx.save(); ctx.scale(G.W / 1920, G.H / 1080);
@@ -278,6 +306,7 @@
       // viradas de página (branco) no início das etapas
       for (const k of ['e1', 'e2', 'e3', 'e4']) { const u = (t - sc[k][0]) / 0.35; if (u >= 0 && u < 1) { ctx.fillStyle = `rgba(250,250,247,${1 - u})`; ctx.fillRect(0, 0, 1920, 1080); } }
       ctx.restore();
+      sketch(ctx, t);
       if (t < ev.dark || t >= ev.cut) globalThis.Subs && Subs.draw(ctx, t, SUBS, { style: 'clean', color: '#1B1A19', highlight: '#C4302B' });
       // etapa 4 escurece até o preto; depois um clarão branco no corte (sincronizado com o som)
       if (t >= ev.dark && t < ev.cut) { ctx.fillStyle = `rgba(0,0,0,${ease.inQuad(clamp((t - ev.dark) / (ev.cut - ev.dark - 0.05)))})`; ctx.fillRect(0, 0, G.W, G.H); }
