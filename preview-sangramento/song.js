@@ -45,9 +45,15 @@ for (const n of ['C4', 'E4', 'G4', 'C5']) { const x = I.musicBox(m(n)); keys.add
 for (let i = 0; i < 3; i++) fx.addMono(I.paperFwip(1 + i * 0.1, 40 + i), T(16) + i * 3 - 0.03, 0.25);
 for (const t of [T(19) + 0.2, T(19) + 1.0]) fx.addMono(I.scribble(0.6, Math.round(t * 7)), t, 0.2);
 
+// ---------- narração: a música abaixa enquanto ela fala ----------
+const Voice = require('./engine/audio/voice');
+const vo = Voice.speak(sc.VO, { out: path.join(__dirname, 'out'), length: DURATION, gain: 1 });
+MIX.duck([pad, str, keys, bass], vo.bus, { depth: 0.55 });
+MIX.duck([hb], vo.bus, { depth: 0.3 });
+
 // ---------- mix ----------
-const stems = { hb, bass, pad, keys, fx, str, verb: reverb(verb, { room: 0.8, damp: 0.35 }), dly: pingpong(dly, BEAT * 0.75, 0.35, 3000) };
-const GAIN = { hb: 1.2, bass: 0.8, pad: 2.4, keys: 1, fx: 0.9, str: 1.6, verb: 1, dly: 1 };
+const stems = { voice: vo.bus, hb, bass, pad, keys, fx, str, verb: reverb(verb, { room: 0.8, damp: 0.35 }), dly: pingpong(dly, BEAT * 0.75, 0.35, 3000) };
+const GAIN = { voice: 2.4, hb: 0.7, bass: 0.8, pad: 2.4, keys: 1, fx: 0.9, str: 1.6, verb: 1, dly: 1 };
 const out = path.join(__dirname, 'out');
 const mix = MIX.mixdown(stems, GAIN, { stemDir: process.env.STEMS ? out : null });
 MIX.highpass(mix, 24);

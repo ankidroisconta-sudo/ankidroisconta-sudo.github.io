@@ -45,8 +45,22 @@
   for (let t = T(15) + 1.2; t < DURATION - 0.5; t += 60 / 72) calm.push({ t, a: 0.55 });
 
   const ev = { cut: T(15), dark: T(15) - 1.2 };
+  // narração em tom de história (cada fala termina antes da próxima virada de cena)
+  const VOICE = { voice: 'mb-br1', rate: 140 };
+  const VO = [
+    { at: 1.0, text: 'Era uma vez o Tonico, numa noite de chuva, que se cortou feio na perna. E o sangue começou a escapar.' },
+    { at: 9.6, text: 'No começo, o corpo é esperto: o coração corre mais rápido pra compensar. É o primeiro estágio.' },
+    { at: 18.6, text: 'No segundo, a pele fica fria e pálida, dá sede, e o coração já está no limite.' },
+    { at: 27.6, text: 'No terceiro, falta oxigênio no cérebro! Vem a tontura, a confusão, e tudo começa a girar.' },
+    { at: 36.4, text: 'No quarto, o corpo desliga o que não é vital: visão, fala, equilíbrio... e o Tonico desmaia.' },
+    { at: 45.6, text: 'Mas essa história pode ter outro final!' },
+    { at: 48.5, text: 'Primeiro, ligue 192.' },
+    { at: 51.0, text: 'Depois, pressione firme com um pano limpo.' },
+    { at: 53.7, text: 'E não tire o pano!' },
+    { at: 56.9, text: 'Sangramento grave é emergência.' },
+  ].map((l) => ({ ...VOICE, ...l }));
   const markers = { rua: 0, e1: T(3), e2: T(6), e3: T(9), e4: T(12), cut: { t: ev.cut, sync: 'av' }, ajuda: T(16), fim: T(19) };
 
-  const SCORE = { FPS, FORMAT, W, H, SAFE, DURATION, clock, T, BEAT, S, m, chords, chordAt, beats, calm, ev, markers, bpmAt, prog };
+  const SCORE = { FPS, FORMAT, W, H, SAFE, DURATION, clock, T, BEAT, S, m, chords, chordAt, beats, calm, ev, markers, bpmAt, prog, VO };
   if (node) module.exports = SCORE; else globalThis.SCORE = SCORE;
 })();

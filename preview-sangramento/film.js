@@ -236,7 +236,7 @@
     heart(ctx, 1640, 380, 0.85, pulseAt2(t), 'happy', t);
     const steps = [['1', 'LIGUE 192', 'SAMU — peça ajuda já'], ['2', 'PRESSIONE FIRME', 'com um pano limpo, sem parar'], ['3', 'NÃO TIRE O PANO', 'ponha outro por cima e deite a pessoa']];
     steps.forEach(([n, a, b], i) => {
-      const q = appear(t, t0 + 1.2 + i * 2.3); if (q <= 0) return;
+      const q = appear(t, t0 + 3.5 + i * 2.5); if (q <= 0) return;
       ctx.save(); ctx.globalAlpha = clamp(q); ctx.translate(120, 280 + i * 190);
       G.ellipse(ctx, 50, 50, 50, 50, { fill: '#2E7D4F', lw: 5, seed: 980 + i });
       lab(ctx, n, 50, 76, 76, { color: '#FFF', align: 'center' });
@@ -259,9 +259,13 @@
     lab(ctx, 'prévia de 1 minuto · conteúdo educativo', 960, 860, 38, { align: 'center', color: '#666' });
   }
 
+  let SUBS = [];
   Studio.film({
+    async init() { const vo = await Studio.loadJSON('out/voice.json'); SUBS = globalThis.Subs ? globalThis.Subs.fromVoice(vo, { maxWords: 6, hold: 0.3 }) : []; },
     draw(ctx, t) {
+      ctx.fillStyle = '#FAFAF7'; ctx.fillRect(0, 0, G.W, G.H);
       ctx.save(); ctx.scale(G.W / 1920, G.H / 1080);
+      ctx.translate(96, 0); ctx.scale(0.9, 0.9); // deixa a faixa de baixo livre para as legendas
       ctx.fillStyle = '#FAFAF7'; ctx.fillRect(0, 0, 1920, 1080);
       const sc = S.S;
       if (t < sc.e1[0]) rua(ctx, t);
@@ -274,6 +278,7 @@
       // viradas de página (branco) no início das etapas
       for (const k of ['e1', 'e2', 'e3', 'e4']) { const u = (t - sc[k][0]) / 0.35; if (u >= 0 && u < 1) { ctx.fillStyle = `rgba(250,250,247,${1 - u})`; ctx.fillRect(0, 0, 1920, 1080); } }
       ctx.restore();
+      if (t < ev.dark || t >= ev.cut) globalThis.Subs && Subs.draw(ctx, t, SUBS, { style: 'clean', color: '#1B1A19', highlight: '#C4302B' });
       // etapa 4 escurece até o preto; depois um clarão branco no corte (sincronizado com o som)
       if (t >= ev.dark && t < ev.cut) { ctx.fillStyle = `rgba(0,0,0,${ease.inQuad(clamp((t - ev.dark) / (ev.cut - ev.dark - 0.05)))})`; ctx.fillRect(0, 0, G.W, G.H); }
       const fl = t >= ev.cut ? Math.exp(-(t - ev.cut) * 7) : 0; if (fl > 0.02) { ctx.fillStyle = `rgba(255,255,255,${fl})`; ctx.fillRect(0, 0, G.W, G.H); }
