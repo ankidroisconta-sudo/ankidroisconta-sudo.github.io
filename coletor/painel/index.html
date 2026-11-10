@@ -1,0 +1,381 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Painel de Jogos</title>
+<style>
+  :root {
+    --bg:#f6f6f4; --card:#fff; --fg:#171717; --muted:#6b6b6b; --line:#e4e4e0;
+    --accent:#0b7a43; --accent-soft:#e3f3ea; --live:#d32f2f; --home:#0b7a43; --away:#2f5fd3;
+    --win:#1f9d55; --draw:#9a9a9a; --loss:#d32f2f;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg:#111; --card:#1b1b1b; --fg:#ececec; --muted:#9b9b9b; --line:#2c2c2c;
+      --accent:#4cc286; --accent-soft:#18301f; --live:#ff6b6b; --home:#4cc286; --away:#7b9cff;
+    }
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:15px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif; }
+  header { background:var(--card); border-bottom:1px solid var(--line); position:sticky; top:0; z-index:5; }
+  .top { max-width:960px; margin:0 auto; padding:12px 16px 0; display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; }
+  .top h1 { font-size:20px; margin:0; }
+  .top .upd { color:var(--muted); font-size:13px; }
+  nav { max-width:960px; margin:0 auto; padding:0 16px; display:flex; gap:4px; }
+  nav a { padding:10px 12px; color:var(--muted); text-decoration:none; border-bottom:2px solid transparent; font-weight:600; }
+  nav a.on { color:var(--accent); border-color:var(--accent); }
+  main { max-width:960px; margin:0 auto; padding:16px 16px 64px; }
+  .chips { display:flex; gap:6px; overflow-x:auto; padding-bottom:6px; margin-bottom:10px; scrollbar-width:thin; }
+  .chip { flex:none; border:1px solid var(--line); background:var(--card); color:var(--fg); border-radius:999px; padding:6px 12px; font:inherit; font-size:14px; cursor:pointer; white-space:nowrap; }
+  .chip.on { background:var(--accent); border-color:var(--accent); color:#fff; }
+  .chip .n { opacity:.7; margin-left:4px; font-size:12px; }
+  .chip.live-chip:not(.on) { color:var(--live); border-color:var(--live); }
+  h2 { font-size:15px; margin:18px 0 8px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; overflow:hidden; }
+  .game { display:grid; grid-template-columns:62px 1fr auto; gap:10px; align-items:center; padding:10px 12px; border-bottom:1px solid var(--line); color:inherit; text-decoration:none; }
+  .game:last-child { border-bottom:0; }
+  .game:hover { background:var(--accent-soft); }
+  .when { font-size:13px; color:var(--muted); text-align:center; }
+  .when.live { color:var(--live); font-weight:700; }
+  .teams div { display:flex; align-items:center; gap:8px; min-width:0; }
+  .teams span.nm { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .teams .win { font-weight:700; }
+  .logo { width:20px; height:20px; object-fit:contain; flex:none; }
+  .score { display:grid; gap:2px; text-align:right; font-weight:700; font-variant-numeric:tabular-nums; min-width:22px; }
+  .empty { padding:24px; text-align:center; color:var(--muted); }
+  .dot { display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--live); margin-right:4px; animation:pulse 1.4s infinite; }
+  @keyframes pulse { 50% { opacity:.3; } }
+  /* página do jogo */
+  .back { display:inline-block; margin-bottom:10px; color:var(--accent); text-decoration:none; font-weight:600; }
+  .hero { padding:18px 12px; display:grid; grid-template-columns:1fr auto 1fr; gap:8px; align-items:center; text-align:center; }
+  .hero img { width:56px; height:56px; object-fit:contain; }
+  .hero .tn { font-weight:700; margin-top:6px; }
+  .hero .big { font-size:36px; font-weight:800; font-variant-numeric:tabular-nums; }
+  .hero .st { font-size:13px; color:var(--muted); }
+  .hero .st.live { color:var(--live); font-weight:700; }
+  .meta { color:var(--muted); font-size:13px; text-align:center; padding:0 12px 14px; }
+  .sec { padding:12px; }
+  .stat { margin:10px 0; }
+  .stat .lbl { display:flex; justify-content:space-between; font-size:14px; }
+  .stat .lbl b { font-variant-numeric:tabular-nums; }
+  .bar { display:flex; height:6px; border-radius:3px; overflow:hidden; background:var(--line); margin-top:4px; gap:2px; }
+  .bar .h { background:var(--home); } .bar .a { background:var(--away); }
+  .ev { display:grid; grid-template-columns:48px 1fr; gap:8px; padding:7px 0; border-bottom:1px solid var(--line); font-size:14px; }
+  .ev:last-child { border:0; }
+  .ev .m { color:var(--muted); font-variant-numeric:tabular-nums; }
+  .ev .t { font-weight:600; }
+  .lineups { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+  .lineups h3 { margin:0 0 6px; font-size:14px; }
+  .pl { font-size:14px; padding:3px 0; display:flex; gap:6px; }
+  .pl .num { color:var(--muted); width:22px; text-align:right; flex:none; }
+  .pl .pos { color:var(--muted); font-size:12px; }
+  .sub { color:var(--muted); font-size:12px; margin-top:10px; }
+  /* tabelas */
+  .tbl { width:100%; border-collapse:collapse; font-size:14px; }
+  .tbl th, .tbl td { padding:8px 6px; border-bottom:1px solid var(--line); text-align:center; white-space:nowrap; }
+  .tbl th { color:var(--muted); font-weight:600; font-size:12px; cursor:pointer; user-select:none; }
+  .tbl td.tm, .tbl th.tm { text-align:left; }
+  .tbl .tmc { display:flex; align-items:center; gap:8px; }
+  .wrap { overflow-x:auto; }
+  .zone { border-left:4px solid transparent; }
+  .form { display:inline-flex; gap:2px; }
+  .form i { width:16px; height:16px; border-radius:3px; font-style:normal; font-size:10px; color:#fff; display:inline-grid; place-items:center; font-weight:700; }
+  .form .V { background:var(--win); } .form .E { background:var(--draw); } .form .D { background:var(--loss); }
+  .note { color:var(--muted); font-size:13px; margin:8px 0; }
+  .legend { display:flex; flex-wrap:wrap; gap:10px; font-size:12px; color:var(--muted); padding:10px 12px; }
+  .legend span::before { content:""; display:inline-block; width:10px; height:10px; border-radius:2px; background:var(--c); margin-right:4px; vertical-align:-1px; }
+  .src { font-size:11px; color:var(--muted); margin-top:2px; }
+  .src.ok { color:var(--win); }
+  .src.bad { color:var(--live); }
+  .srcs { width:100%; border-collapse:collapse; font-size:14px; }
+  .srcs td, .srcs th { padding:8px 6px; border-bottom:1px solid var(--line); text-align:left; }
+  .srcs th { color:var(--muted); font-size:12px; font-weight:600; }
+  .pill { display:inline-block; font-size:12px; padding:1px 8px; border-radius:999px; background:var(--accent-soft); color:var(--accent); font-weight:600; }
+  .pill.bad { background:#fdecea; color:var(--live); }
+  .warn { background:#fff4e5; color:#7a4b00; border:1px solid #f3d19c; border-radius:8px; padding:8px 12px; font-size:13px; margin-bottom:12px; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .warn { background:#2e2410; color:#f3d19c; border-color:#5c4718; } }
+  @media (max-width:560px) { .lineups { grid-template-columns:1fr; } .hero .big { font-size:28px; } .hero img { width:44px; height:44px; } }
+</style>
+</head>
+<body>
+<header>
+  <div class="top"><h1>⚽ Painel de Jogos</h1><span class="upd" id="upd"></span></div>
+  <nav><a href="#/" data-v="jogos">Jogos</a><a href="#/tabelas" data-v="tabelas">Tabelas</a><a href="#/times" data-v="times">Times</a><a href="#/fontes" data-v="fontes">Fontes</a></nav>
+</header>
+<main id="app"><div class="empty">Carregando…</div></main>
+
+<script src="dados.js"></script>
+<script>
+(() => {
+  const D = window.DADOS;
+  const app = document.getElementById('app');
+  const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[c]);
+  const img = (t, cls = 'logo') => t?.escudo ? `<img class="${cls}" src="${esc(t.escudo)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">` : `<span class="${cls}"></span>`;
+  const hojeISO = () => new Date(Date.now() - 3 * 3600e3).toISOString().slice(0, 10); // horário de Brasília
+  const hora = (iso) => new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo' });
+  const dataLonga = (iso) => new Date(iso).toLocaleString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo' });
+  const ligaNome = (id) => D.ligas.find((l) => l.id === id)?.nome ?? id;
+  const fonteNome = (id) => D.nomes_fontes?.[id] ?? id;
+  const guarda = { get: (k) => { try { return localStorage.getItem(k); } catch { return null; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch {} } };
+
+  if (!D) {
+    app.innerHTML = '<div class="empty">Ainda não há dados. Rode o coletor (duplo clique em "Iniciar").</div>';
+    return;
+  }
+
+  const atual = new Date(D.gerado_em);
+  document.getElementById('upd').textContent = `Atualizado ${atual.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo' })}`;
+
+  // Recarrega sozinho para pegar a próxima coleta (mantém a página atual).
+  setTimeout(() => location.reload(), Math.max(1, D.intervalo_minutos || 5) * 60e3);
+
+  const porId = Object.fromEntries(D.jogos.map((g) => [g.id, g]));
+
+  function rotuloDia(d) {
+    const h = hojeISO();
+    const diff = Math.round((Date.parse(d) - Date.parse(h)) / 86400e3);
+    if (diff === 0) return 'Hoje';
+    if (diff === -1) return 'Ontem';
+    if (diff === 1) return 'Amanhã';
+    const [, m, dd] = d.split('-');
+    const sem = new Date(d + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'short' }).replace('.', '');
+    return `${sem} ${dd}/${m}`;
+  }
+
+  // Quantas fontes confirmam o placar (ou quantas têm o jogo, se ainda não começou)
+  function selo(g) {
+    const n = (g.confirmacoes || []).length;
+    if (g.divergentes?.length) return `<div class="src bad" title="Fontes discordam do placar">⚠ divergência</div>`;
+    if (n > 1) return `<div class="src ok" title="${esc((g.confirmacoes || []).map(fonteNome).join(', '))}">✓ ${n} fontes</div>`;
+    const total = Object.keys(g.fontes || {}).length;
+    return total > 1 ? `<div class="src" title="${esc(Object.keys(g.fontes).map(fonteNome).join(', '))}">${total} fontes</div>` : '';
+  }
+
+  function linhaJogo(g) {
+    const live = g.estado === 'ao_vivo';
+    const pre = g.estado === 'agendado';
+    const quando = live ? `<span class="dot"></span>${esc(g.relogio || 'Ao vivo')}` : pre ? hora(g.data) : esc(g.situacao || 'Fim');
+    const c = g.casa || {}, f = g.fora || {};
+    const venceu = (x, y) => !pre && x.placar != null && y.placar != null && x.placar > y.placar ? 'win' : '';
+    return `<a class="game" href="#/jogo/${esc(g.id)}">
+      <div class="when ${live ? 'live' : ''}">${quando}${selo(g)}</div>
+      <div class="teams">
+        <div class="${venceu(c, f)}">${img(c.time)}<span class="nm">${esc(c.time?.nome)}</span></div>
+        <div class="${venceu(f, c)}">${img(f.time)}<span class="nm">${esc(f.time?.nome)}</span></div>
+      </div>
+      <div class="score"><span>${pre ? '' : esc(c.placar ?? '-')}</span><span>${pre ? '' : esc(f.placar ?? '-')}</span></div>
+    </a>`;
+  }
+
+  // ---------------------------------------------------------------- Jogos
+  function vJogos() {
+    const liga = guarda.get('liga') || 'todas';
+    const lista = D.jogos.filter((g) => liga === 'todas' || g.liga === liga);
+    const aoVivo = lista.filter((g) => g.estado === 'ao_vivo');
+    const dias = [...new Set(lista.map((g) => g.dia))].sort();
+    let dia = guarda.get('dia');
+    if (dia !== 'aovivo' && !dias.includes(dia)) dia = dias.includes(hojeISO()) ? hojeISO() : dias.find((d) => d >= hojeISO()) || dias[dias.length - 1];
+    if (dia === 'aovivo' && !aoVivo.length) dia = dias.includes(hojeISO()) ? hojeISO() : dias[dias.length - 1];
+
+    const contagem = (id) => D.jogos.filter((g) => g.liga === id).length;
+    let h = '<div class="chips" id="ligas">' +
+      `<button class="chip ${liga === 'todas' ? 'on' : ''}" data-liga="todas">Todas</button>` +
+      D.ligas.filter((l) => contagem(l.id)).map((l) => `<button class="chip ${liga === l.id ? 'on' : ''}" data-liga="${esc(l.id)}">${esc(l.nome)}</button>`).join('') +
+      '</div>';
+
+    h += '<div class="chips" id="dias">' +
+      (aoVivo.length ? `<button class="chip live-chip ${dia === 'aovivo' ? 'on' : ''}" data-dia="aovivo"><span class="dot"></span>Ao vivo<span class="n">${aoVivo.length}</span></button>` : '') +
+      dias.map((d) => `<button class="chip ${dia === d ? 'on' : ''}" data-dia="${d}">${rotuloDia(d)}<span class="n">${lista.filter((g) => g.dia === d).length}</span></button>`).join('') +
+      '</div>';
+
+    const doDia = dia === 'aovivo' ? aoVivo : lista.filter((g) => g.dia === dia);
+    if (!doDia.length) h += '<div class="card"><div class="empty">Nenhum jogo neste dia.</div></div>';
+    const grupos = {};
+    for (const g of doDia) (grupos[g.liga] ||= []).push(g);
+    for (const l of D.ligas) {
+      if (!grupos[l.id]) continue;
+      h += `<h2>${esc(l.nome)}</h2><div class="card">${grupos[l.id].map(linhaJogo).join('')}</div>`;
+    }
+    app.innerHTML = h;
+
+    app.querySelector('#ligas').onclick = (e) => { const b = e.target.closest('[data-liga]'); if (b) { guarda.set('liga', b.dataset.liga); render(); } };
+    app.querySelector('#dias').onclick = (e) => { const b = e.target.closest('[data-dia]'); if (b) { guarda.set('dia', b.dataset.dia); render(); } };
+    app.querySelector('#dias .on')?.scrollIntoView({ inline: 'center', block: 'nearest' });
+  }
+
+  // ----------------------------------------------------------------- Jogo
+  function vJogo(id) {
+    const g = porId[id];
+    if (!g) { app.innerHTML = '<a class="back" href="#/">← Jogos</a><div class="card"><div class="empty">Jogo não encontrado.</div></div>'; return; }
+    const c = g.casa || {}, f = g.fora || {}, d = g.detalhe;
+    const live = g.estado === 'ao_vivo', pre = g.estado === 'agendado';
+    let h = `<a class="back" href="#/">← Jogos</a><div class="card">
+      <div class="hero">
+        <div>${img(c.time, '')}<div class="tn">${esc(c.time?.nome)}</div><div class="st">Casa</div></div>
+        <div><div class="big">${pre ? 'x' : `${esc(c.placar ?? '-')} – ${esc(f.placar ?? '-')}`}</div>
+          <div class="st ${live ? 'live' : ''}">${live ? `<span class="dot"></span>${esc(g.relogio || 'Ao vivo')}` : pre ? hora(g.data) : esc(g.situacao || 'Encerrado')}</div></div>
+        <div>${img(f.time, '')}<div class="tn">${esc(f.time?.nome)}</div><div class="st">Fora</div></div>
+      </div>
+      <div class="meta">${esc(ligaNome(g.liga))}${g.rodada ? ' · ' + esc(g.rodada) : ''}<br>${esc(dataLonga(g.data))}${g.estadio ? '<br>' + esc(g.estadio) + (g.cidade ? ', ' + esc(g.cidade) : '') : ''}</div>
+    </div>`;
+
+    // Lances: do detalhe (mais completo) ou do placar
+    const lances = d?.lances?.length ? d.lances : (g.lances || []).map((l) => ({ ...l, time: [c, f].find((x) => x.time?.id === l.time)?.time?.nome }));
+    const relevantes = lances;
+    if (relevantes.length) {
+      const icone = (t = '') => t.includes('Gol') ? '⚽' : t.includes('amarelo') ? '🟨' : t.includes('vermelho') ? '🟥' : t.includes('Substitui') ? '🔁' : t.includes('Pênalti') ? '🎯' : '•';
+      h += `<h2>Lances</h2><div class="card sec">${relevantes.map((l) => `
+        <div class="ev"><span class="m">${esc(l.minuto || '')}</span>
+          <span><span class="t">${icone(l.tipo)} ${esc(l.tipo)}</span>${l.time ? ` · ${esc(l.time)}` : ''}
+          ${l.jogadores?.length ? `<br>${esc(l.jogadores.join(', '))}` : l.texto ? `<br><span class="sub">${esc(l.texto)}</span>` : ''}</span></div>`).join('')}</div>`;
+    }
+
+    // Estatísticas: ESPN + as que só o 365Scores tem (ex.: gols esperados, xG).
+    // Se a ESPN não tiver o jogo, usa as do 365Scores.
+    const so365 = (d?.estatisticas_365 || []);
+    let stats = d?.estatisticas?.length ? [...d.estatisticas] : [];
+    if (so365.length) {
+      const extras = so365.filter((x) => /esperad|xG|perigos|grandes chances|dentro da área|toques|duelos|dribles/i.test(x.nome));
+      stats = stats.length ? [...stats, ...extras] : so365;
+    }
+    if (stats.length) {
+      const pct = (v) => { const n = parseFloat(String(v).replace(',', '.')); return isFinite(n) ? n : 0; };
+      h += `<h2>Estatísticas</h2><div class="card sec">
+        <div class="stat"><div class="lbl"><b style="color:var(--home)">${esc(c.time?.sigla || c.time?.nome)}</b><b style="color:var(--away)">${esc(f.time?.sigla || f.time?.nome)}</b></div></div>
+        ${stats.map((s) => {
+          const a = pct(s.casa), b = pct(s.fora), tot = a + b;
+          const fmt = (v) => /Pct$/.test(s.chave || '') && pct(v) <= 1 ? Math.round(pct(v) * 100) + '%' : esc(v ?? '-');
+          return `<div class="stat"><div class="lbl"><b>${fmt(s.casa)}</b><span>${esc(s.nome)}</span><b>${fmt(s.fora)}</b></div>
+            <div class="bar"><div class="h" style="flex:${tot ? a : 1}"></div><div class="a" style="flex:${tot ? b : 1}"></div></div></div>`;
+        }).join('')}
+        <p class="sub">Fonte: ${d?.estatisticas?.length ? 'ESPN' : '365Scores'}${d?.estatisticas?.length && so365.length ? ' + 365Scores (xG e chances)' : ''}</p></div>`;
+    } else if (!pre) {
+      h += '<p class="note">Estatísticas detalhadas ainda não coletadas para este jogo.</p>';
+    }
+
+    if (d?.escalacoes && (d.escalacoes.casa || d.escalacoes.fora)) {
+      const col = (lado, t) => {
+        const e = d.escalacoes[lado];
+        if (!e) return '<div></div>';
+        const p = (j) => `<div class="pl"><span class="num">${esc(j.numero || '')}</span><span>${esc(j.nome)}${j.saiu ? ' ↓' : ''}${j.entrou ? ' ↑' : ''} <span class="pos">${esc(j.posicao || '')}</span>${j.stats?.totalGoals ? ' ⚽'.repeat(Math.min(5, +j.stats.totalGoals || 1)) : ''}${j.stats?.yellowCards ? ' 🟨' : ''}${j.stats?.redCards ? ' 🟥' : ''}</span></div>`;
+        const tit = e.jogadores.filter((j) => j.titular), res = e.jogadores.filter((j) => !j.titular);
+        return `<div><h3>${esc(t?.nome)}${e.formacao ? ` <span class="pos">(${esc(e.formacao)})</span>` : ''}</h3>${tit.map(p).join('')}
+          ${res.length ? `<div class="sub">Reservas</div>${res.map(p).join('')}` : ''}</div>`;
+      };
+      h += `<h2>Escalações</h2><div class="card sec"><div class="lineups">${col('casa', c.time)}${col('fora', f.time)}</div>
+        <p class="sub">↓ saiu · ↑ entrou</p></div>`;
+    }
+
+    // Placar em cada fonte
+    const fs = Object.entries(g.fontes || {});
+    if (fs.length) {
+      const conf = new Set(g.confirmacoes || []), div = new Set(g.divergentes || []);
+      h += `<h2>Fontes (${fs.length})</h2><div class="card sec"><table class="srcs">
+        <tr><th>Fonte</th><th>Placar</th><th>Situação</th><th></th></tr>
+        ${fs.map(([n, f]) => `<tr><td>${esc(fonteNome(n))}</td>
+          <td>${f.casa != null && f.fora != null ? `${esc(f.casa)} x ${esc(f.fora)}` : '–'}</td>
+          <td>${esc({ agendado: 'Agendado', ao_vivo: 'Ao vivo', encerrado: 'Encerrado', adiado: 'Adiado' }[f.estado] || f.estado || '')}</td>
+          <td>${conf.has(n) ? '<span class="pill">confere</span>' : div.has(n) ? '<span class="pill bad">diferente</span>' : ''}</td></tr>`).join('')}
+      </table>${g.divergentes?.length ? '<p class="sub">Quando as fontes discordam, vale o placar da maioria.</p>' : ''}</div>`;
+    }
+
+    const info = [];
+    if (d?.arbitros?.length) info.push(`Arbitragem: ${esc(d.arbitros.join(', '))}`);
+    const pub = d?.publico || g.publico;
+    if (pub) info.push(`Público: ${pub.toLocaleString('pt-BR')}`);
+    if (g.transmissao?.length) info.push(`Transmissão: ${esc(g.transmissao.join(', '))}`);
+    if (c.forma || f.forma) info.push(`Forma recente: ${esc(c.time?.nome)} ${forma(c.forma)} · ${esc(f.time?.nome)} ${forma(f.forma)}`);
+    if (info.length) h += `<h2>Informações</h2><div class="card sec">${info.map((x) => `<p style="margin:4px 0">${x}</p>`).join('')}</div>`;
+
+    app.innerHTML = h;
+    scrollTo(0, 0);
+  }
+
+  // A ESPN escreve a forma em inglês (W/D/L); aqui vira V/E/D.
+  const forma = (s) => s ? `<span class="form">${[...s].map((x) => { const r = { W: 'V', D: 'E', L: 'D', V: 'V', E: 'E' }[x] || x; return `<i class="${r}">${r}</i>`; }).join('')}</span>` : '';
+
+  function seletorLiga(chave, ids) {
+    const atual = ids.includes(guarda.get(chave)) ? guarda.get(chave) : ids[0];
+    return [atual, `<div class="chips" id="sel">${ids.map((id) => `<button class="chip ${id === atual ? 'on' : ''}" data-liga="${esc(id)}">${esc(ligaNome(id))}</button>`).join('')}</div>`];
+  }
+
+  // --------------------------------------------------------------- Tabelas
+  function vTabelas() {
+    const ids = D.ligas.map((l) => l.id).filter((id) => D.tabelas[id]?.grupos?.length);
+    if (!ids.length) { app.innerHTML = '<div class="card"><div class="empty">Nenhuma tabela disponível.</div></div>'; return; }
+    const [liga, sel] = seletorLiga('tabela', ids);
+    const futebol = D.ligas.find((l) => l.id === liga)?.esporte === 'soccer';
+    const T = D.tabelas[liga];
+    const conf = (T.conferencia || []).map((c) => `${esc(fonteNome(c.fonte))}: ${c.iguais} de ${c.total} iguais`).join(' · ');
+    let h = sel + `<p class="note">Fonte: ${esc(fonteNome(T.fonte))}${conf ? ` · conferida com ${conf}` : ''}</p>`;
+    const temCartoes = T.grupos.some((g) => g.linhas.some((r) => r.cartoes_amarelos != null));
+    for (const g of T.grupos) {
+      const zonas = new Map();
+      h += `${T.grupos.length > 1 ? `<h2>${esc(g.nome)}</h2>` : ''}<div class="card"><div class="wrap"><table class="tbl">
+        <tr><th>#</th><th class="tm">Time</th>${futebol ? `<th>P</th><th>J</th><th>V</th><th>E</th><th>D</th><th>GP</th><th>GC</th><th>SG</th>${temCartoes ? '<th title="Cartões amarelos (CBF)">🟨</th><th title="Cartões vermelhos (CBF)">🟥</th>' : ''}` : '<th>V</th><th>D</th><th>%</th><th>J</th>'}</tr>
+        ${g.linhas.map((r) => {
+          if (r.zona) zonas.set(r.zona, r.zona_cor);
+          return `<tr><td class="zone" style="border-left-color:${esc(r.zona_cor || 'transparent')}">${r.pos}</td>
+            <td class="tm"><span class="tmc">${img(r.time)}${esc(r.time?.nome)}</span></td>
+            ${futebol ? `<td><b>${r.pontos ?? ''}</b></td><td>${r.jogos ?? ''}</td><td>${r.vitorias ?? ''}</td><td>${r.empates ?? ''}</td><td>${r.derrotas ?? ''}</td><td>${r.gols_pro ?? ''}</td><td>${r.gols_contra ?? ''}</td><td>${r.saldo > 0 ? '+' : ''}${r.saldo ?? ''}</td>${temCartoes ? `<td>${r.cartoes_amarelos ?? ''}</td><td>${r.cartoes_vermelhos ?? ''}</td>` : ''}`
+              : `<td>${r.vitorias ?? ''}</td><td>${r.derrotas ?? ''}</td><td>${r.aproveitamento != null ? (r.aproveitamento * 100).toFixed(0) : ''}</td><td>${r.jogos ?? ''}</td>`}</tr>`;
+        }).join('')}
+      </table></div>${zonas.size ? `<div class="legend">${[...zonas].map(([n, c]) => `<span style="--c:${esc(c)}">${esc(n)}</span>`).join('')}</div>` : ''}</div>`;
+    }
+    app.innerHTML = h;
+    app.querySelector('#sel').onclick = (e) => { const b = e.target.closest('[data-liga]'); if (b) { guarda.set('tabela', b.dataset.liga); render(); } };
+  }
+
+  // ----------------------------------------------------------------- Times
+  function vTimes() {
+    const ids = D.ligas.map((l) => l.id).filter((id) => D.times.some((t) => t.liga === id));
+    if (!ids.length) { app.innerHTML = '<div class="card"><div class="empty">Ainda não há jogos encerrados no histórico.</div></div>'; return; }
+    const [liga, sel] = seletorLiga('times', ids);
+    const futebol = D.ligas.find((l) => l.id === liga)?.esporte === 'soccer';
+    const cols = [
+      ['jogos', 'J'], ['vitorias', 'V'], ['empates', 'E'], ['derrotas', 'D'],
+      ['media_gols_pro', futebol ? 'Gols/j' : 'Pts/j'], ['media_gols_contra', futebol ? 'Sofre/j' : 'Sofre/j'],
+      ...(futebol ? [['sem_sofrer', 'Sem sofrer'], ['com_estatisticas', 'c/ estat.'], ['m:possessionPct', 'Posse %'], ['m:totalShots', 'Final./j'], ['m:shotsOnTarget', 'No gol/j'], ['m:wonCorners', 'Esc./j'], ['m:yellowCards', 'Amar./j']] : []),
+    ];
+    const val = (t, k) => k.startsWith('m:') ? t.medias?.[k.slice(2)] : t[k];
+    const ord = guarda.get('ord') || 'jogos';
+    const lista = D.times.filter((t) => t.liga === liga).sort((a, b) => (val(b, ord) ?? -1) - (val(a, ord) ?? -1));
+    app.innerHTML = sel + `<p class="note">Calculado pelo próprio coletor com os ${D.total_historico} jogos guardados no seu histórico. Posse, finalizações, escanteios e cartões são médias só dos jogos com estatísticas coletadas (coluna "c/ estat."). Quanto mais tempo o coletor rodar, mais completo fica. Clique numa coluna para ordenar.</p>
+      <div class="card"><div class="wrap"><table class="tbl"><tr><th class="tm">Time</th>${cols.map(([k, n]) => `<th data-k="${k}">${n}${k === ord ? ' ▾' : ''}</th>`).join('')}<th>Últimos</th></tr>
+      ${lista.map((t) => `<tr><td class="tm"><span class="tmc">${img(t.time)}${esc(t.time?.nome)}</span></td>${cols.map(([k]) => `<td>${val(t, k) ?? '–'}</td>`).join('')}<td>${forma(t.ultimos.join(''))}</td></tr>`).join('')}
+      </table></div></div>`;
+    app.querySelector('#sel').onclick = (e) => { const b = e.target.closest('[data-liga]'); if (b) { guarda.set('times', b.dataset.liga); render(); } };
+    app.querySelector('.tbl').onclick = (e) => { const th = e.target.closest('th[data-k]'); if (th) { guarda.set('ord', th.dataset.k); render(); } };
+  }
+
+  // ---------------------------------------------------------------- Fontes
+  function vFontes() {
+    const lista = D.fontes || [];
+    const ok = lista.filter((f) => f.ok).length;
+    const quando = (iso) => iso ? new Date(iso).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo' }) : '–';
+    app.innerHTML = `<p class="note">${ok} de ${lista.length} fontes funcionando na última coleta. Se uma fonte cair, as outras continuam; o placar de cada jogo é decidido pela maioria.</p>
+      <div class="card"><div class="wrap"><table class="srcs">
+      <tr><th>Fonte</th><th>Situação</th><th>Jogos</th><th>Última consulta</th></tr>
+      ${lista.map((f) => `<tr><td><b>${esc(f.nome)}</b></td>
+        <td>${f.ok ? '<span class="pill">funcionando</span>' : `<span class="pill bad">fora do ar</span><div class="src">${esc(f.erro || '')}</div>`}</td>
+        <td>${f.jogos}${f.tabelas ? ` + ${f.tabelas} tabela${f.tabelas > 1 ? 's' : ''}` : ''}</td><td>${quando(f.quando)}</td></tr>`).join('')}
+      </table></div></div>`;
+  }
+
+  function render() {
+    const [, v, id] = (location.hash || '#/').split('/');
+    const view = v === 'jogo' ? 'jogos' : (v || 'jogos');
+    document.querySelectorAll('nav a').forEach((a) => a.classList.toggle('on', a.dataset.v === view));
+    if (v === 'jogo') vJogo(decodeURIComponent(id || ''));
+    else if (v === 'tabelas') vTabelas();
+    else if (v === 'times') vTimes();
+    else if (v === 'fontes') vFontes();
+    else vJogos();
+  }
+  addEventListener('hashchange', render);
+  render();
+})();
+</script>
+</body>
+</html>

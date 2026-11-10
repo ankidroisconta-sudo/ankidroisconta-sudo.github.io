@@ -1,0 +1,69 @@
+COLETOR DE ESTATÍSTICAS
+=======================
+
+O que ele faz
+-------------
+Busca jogos, placares, estatísticas (posse, finalizações, escanteios,
+faltas, cartões, passes…), escalações, lances e classificações, guarda tudo
+na pasta "dados" e monta um site que abre sozinho no navegador.
+
+Enquanto a janela estiver aberta, ele atualiza a cada 5 minutos e o site
+recarrega sozinho. Para parar, feche a janela.
+
+Como usar
+---------
+Windows:  duplo clique em "Iniciar (Windows).bat"
+Mac:      clique com o botão direito em "Iniciar (Mac).command" > Abrir
+          (só na primeira vez; depois é duplo clique)
+Linux:    duplo clique em "iniciar-linux.sh" (ou rode no terminal)
+
+Precisa do Python 3.8 ou mais novo. Se não tiver, o Windows abre a página
+de download: instale e marque "Add python.exe to PATH" na primeira tela.
+
+Para ver o site sem coletar de novo, abra "site/index.html".
+
+Pastas
+------
+dados/   o seu histórico. Só cresce: guarde ou faça backup desta pasta.
+site/    o site gerado (index.html + dados.js).
+painel/  o modelo do site. Não apague.
+
+Escolher ligas e opções
+-----------------------
+Abra "config.json" (criado na primeira execução) no Bloco de Notas:
+  "ativa": true / false     liga ou desliga cada liga
+  "intervalo_minutos": 5    de quanto em quanto tempo atualiza
+  "dias_para_frente": 14    quantos dias de próximos jogos mostrar
+  "dias_detalhe": 7         quantos dias para trás buscar estatísticas
+  "abrir_navegador": true   abre o site ao iniciar
+Salve e o coletor usa as mudanças na próxima atualização.
+
+De onde vêm os dados (11 fontes)
+--------------------------------
+Placar ao vivo:   ESPN, 365Scores, LiveScore, NHL.com, MLB.com
+Estatísticas:     ESPN (escalações, lances, ~28 números) e 365Scores (inclui xG)
+Classificação:    ESPN, ge e CBF (oficial, com cartões) - conferidas entre si
+Confirmação:      ge, OpenLigaDB, TheSportsDB, FixtureDownload, openfootball
+
+Cada jogo é procurado em todas as fontes. O placar final é o da maioria, e
+o site mostra quantas fontes confirmam ("✓ 3 fontes") ou se alguma
+discorda ("⚠ divergência"). Se uma fonte sair do ar, as outras continuam.
+A aba "Fontes" do site mostra quais estão funcionando.
+
+NHL.com e MLB.com só são consultadas se a NHL ou a MLB estiverem ligadas
+no config.json. Para desligar uma fonte, coloque o nome dela em
+"fontes_desligadas", por exemplo: "fontes_desligadas": ["thesportsdb"]
+
+Flashscore, Sofascore, FotMob e o site da NBA bloqueiam programas de
+coleta, por isso não estão na lista.
+
+Os dados são reais, mas vêm de sites de terceiros: se um deles mudar ou
+bloquear o acesso, aquela fonte para. O que já estiver na pasta "dados"
+continua seu. Use para fins pessoais.
+
+Peso no computador
+------------------
+Medido numa coleta completa: 75 a 100 MB de memória, poucos segundos de
+processador a cada 5 minutos e cerca de 1,3 MB de internet por
+atualização (uns 15 MB por hora com a janela aberta). A pasta "dados"
+começa com uns 5 MB e cresce aos poucos.

@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>API de Esportes</title>
+<style>
+  :root { --bg:#fff; --fg:#1a1a1a; --muted:#666; --card:#f5f5f4; --line:#ddd; --accent:#0a7d3e; --live:#c62828; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#121212; --fg:#eee; --muted:#9a9a9a; --card:#1e1e1e; --line:#333; --accent:#4cc286; --live:#ff6b6b; } }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:16px/1.5 system-ui, sans-serif; }
+  main { max-width:860px; margin:0 auto; padding:32px 16px 64px; }
+  h1 { margin:0 0 4px; } h2 { margin-top:40px; border-bottom:1px solid var(--line); padding-bottom:6px; }
+  p.lead { color:var(--muted); margin-top:0; }
+  code, pre { font-family: ui-monospace, Menlo, monospace; font-size:14px; }
+  pre { background:var(--card); padding:12px; border-radius:8px; overflow-x:auto; }
+  table { width:100%; border-collapse:collapse; font-size:14px; }
+  td, th { text-align:left; padding:6px 8px; border-bottom:1px solid var(--line); vertical-align:top; }
+  .wrap { overflow-x:auto; }
+  .game { display:flex; justify-content:space-between; gap:12px; padding:8px 0; border-bottom:1px solid var(--line); }
+  .live { color:var(--live); font-weight:600; }
+  .muted { color:var(--muted); font-size:14px; }
+  a { color:var(--accent); }
+</style>
+</head>
+<body>
+<main>
+  <h1>API de Esportes</h1>
+  <p class="lead">Placar, agenda, classificação, times, escalações e estatísticas de jogos reais. Gratuita, sem chave e com CORS liberado.</p>
+  <p class="muted" id="status">Carregando status…</p>
+  <p>Quer ver os jogos e estatísticas num site? Abra o <a href="../painel/">Painel de Jogos</a>.</p>
+
+  <h2>Como usar</h2>
+  <p>Base: <code id="base">/api/v1</code>. Todas as respostas são JSON no formato <code>{ generatedAt, source, data }</code>.</p>
+  <pre><code>const res = await fetch('https://ankidroisconta-sudo.github.io/api/v1/brasileirao/today.json');
+const { data } = await res.json();
+data.forEach(j =&gt; console.log(j.home.team.name, j.home.score, 'x', j.away.score, j.away.team.name));</code></pre>
+
+  <h2>Endpoints</h2>
+  <div class="wrap"><table>
+    <tr><th>Caminho</th><th>Conteúdo</th></tr>
+    <tr><td><code>status.json</code></td><td>Horário da última atualização, totais e avisos</td></tr>
+    <tr><td><code>leagues.json</code></td><td>Ligas disponíveis e seus endpoints</td></tr>
+    <tr><td><code>live.json</code></td><td>Todos os jogos ao vivo agora, de todas as ligas</td></tr>
+    <tr><td><code>today.json</code></td><td>Todos os jogos de hoje (horário de Brasília)</td></tr>
+    <tr><td><code>{liga}/games.json</code></td><td>Jogos dos últimos 3 dias e dos próximos 7</td></tr>
+    <tr><td><code>{liga}/today.json</code></td><td>Jogos de hoje da liga</td></tr>
+    <tr><td><code>{liga}/live.json</code></td><td>Jogos ao vivo da liga</td></tr>
+    <tr><td><code>{liga}/standings.json</code></td><td>Classificação (pontos, vitórias, saldo, zona)</td></tr>
+    <tr><td><code>{liga}/teams.json</code></td><td>Times, escudos e cores</td></tr>
+    <tr><td><code>games/{id}.json</code></td><td>Detalhe do jogo: escalações, estatísticas, lances, árbitros, confronto direto. Disponível quando o jogo tem <code>detailUrl</code>.</td></tr>
+  </table></div>
+
+  <h2>Ligas</h2>
+  <div class="wrap"><table id="leagues"><tr><td class="muted">Carregando…</td></tr></table></div>
+
+  <h2>Jogos de hoje</h2>
+  <div id="today" class="muted">Carregando…</div>
+
+  <h2>Campos de um jogo</h2>
+  <pre><code>{
+  "id": "701", "league": "brasileirao", "date": "2026-11-09T22:00Z",
+  "status": { "state": "in", "statePt": "ao_vivo", "clock": "67'", "detail": "67'" },
+  "home": { "team": { "name": "...", "logo": "..." }, "score": 2, "form": "WWDLW", "statistics": {...} },
+  "away": { ... },
+  "venue": { "name": "...", "city": "..." }, "attendance": 61000,
+  "broadcasts": ["..."], "events": [{ "type": "Goal", "minute": "12'", "athletes": ["..."] }],
+  "odds": { ... }, "detailUrl": "games/701.json"
+}</code></pre>
+
+  <h2>Avisos</h2>
+  <p class="muted">Os dados vêm dos endpoints públicos (não oficiais) da ESPN e são atualizados a cada ~10 minutos, então o placar ao vivo pode atrasar. A ESPN pode mudar ou bloquear esses endpoints sem aviso. Use em projetos pessoais; para uso comercial, contrate um provedor licenciado.</p>
+</main>
+<script>
+  const base = new URL('v1/', location.href.replace(/[^/]*$/, ''));
+  document.getElementById('base').textContent = base.href;
+  const get = (p) => fetch(new URL(p, base)).then((r) => { if (!r.ok) throw new Error(r.status); return r.json(); });
+  const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' })[c]);
+
+  get('status.json').then((s) => {
+    document.getElementById('status').textContent =
+      `Atualizado em ${new Date(s.generatedAt).toLocaleString('pt-BR')} · ${s.games} jogos · ${s.live} ao vivo`;
+  }).catch(() => { document.getElementById('status').textContent = 'Dados ainda não publicados.'; });
+
+  get('leagues.json').then(({ data }) => {
+    document.getElementById('leagues').innerHTML = '<tr><th>ID</th><th>Liga</th><th>Jogos</th><th>Ao vivo</th></tr>' +
+      data.map((l) => `<tr><td><code>${esc(l.id)}</code></td><td>${esc(l.name)}</td><td>${l.games}</td><td>${l.live}</td></tr>`).join('');
+  }).catch(() => { document.getElementById('leagues').innerHTML = '<tr><td class="muted">Indisponível.</td></tr>'; });
+
+  get('today.json').then(({ data }) => {
+    const el = document.getElementById('today');
+    if (!data.length) { el.textContent = 'Nenhum jogo hoje.'; return; }
+    el.className = '';
+    el.innerHTML = data.map((g) => {
+      const live = g.status.state === 'in';
+      const score = g.status.state === 'pre'
+        ? new Date(g.date).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+        : `${g.home?.score ?? '-'} x ${g.away?.score ?? '-'}`;
+      return `<div class="game"><span>${esc(g.home?.team.name)} ${esc(score)} ${esc(g.away?.team.name)}<br>
+        <span class="muted">${esc(g.league)}</span></span>
+        <span class="${live ? 'live' : 'muted'}">${esc(g.status.shortDetail ?? g.status.statePt)}</span></div>`;
+    }).join('');
+  }).catch(() => { document.getElementById('today').textContent = 'Indisponível.'; });
+</script>
+</body>
+</html>
