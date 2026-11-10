@@ -1,2 +1,7 @@
 _site/
 node_modules/
+__pycache__/
+# dados locais do coletor (cada computador tem o seu)
+coletor/dados/
+coletor/site/
+coletor/config.json

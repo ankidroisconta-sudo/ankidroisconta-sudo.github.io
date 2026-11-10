@@ -31,7 +31,7 @@ jobs:
       - name: Copiar páginas do site
         run: |
           mkdir -p _site
-          rsync -a --exclude '.git' --exclude '.github' --exclude '_site' --exclude 'scripts' ./ _site/
+          rsync -a --exclude '.git' --exclude '.github' --exclude '_site' --exclude 'scripts' --exclude 'coletor' ./ _site/
 
       - name: Testar normalização
         run: node --test "scripts/sports-api/*.test.mjs"
@@ -40,6 +40,19 @@ jobs:
         env:
           SITE_URL: https://${{ github.repository_owner }}.github.io
         run: node scripts/sports-api/build.mjs _site
+
+      # Histórico do painel guardado entre execuções (o GitHub apaga caches
+      # sem uso por 7 dias; rodando a cada 10 minutos ele se mantém).
+      - name: Restaurar histórico do painel
+        uses: actions/cache@v4
+        with:
+          path: coletor/dados
+          key: coletor-dados-${{ github.run_id }}
+          restore-keys: coletor-dados-
+
+      - name: Gerar painel
+        continue-on-error: true  # se o painel falhar, a API continua sendo publicada
+        run: python3 coletor/coletor.py --uma-vez --site _site/painel --dias-detalhe 2
 
       - uses: actions/upload-pages-artifact@v3
         with:

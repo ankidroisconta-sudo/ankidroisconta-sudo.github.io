@@ -118,10 +118,20 @@ async function buildLeague(l) {
   const base = `${SITE_API}/${l.sport}/${l.league}`;
 
   const games = await withFallback(`${l.id} jogos`, `${l.id}/games.json`, async () => {
-    const range = `${ymd(shift(-DAYS_BACK))}-${ymd(shift(DAYS_AHEAD))}`;
-    const json = await getJson(`${base}/scoreboard?dates=${range}&limit=1000`);
-    const list = normalizeScoreboard(json, l.id).sort((a, b) => (a.date ?? '').localeCompare(b.date ?? ''));
-    return envelope({ ...meta, range }, list);
+    // A ESPN recusa intervalos de datas (AAAAMMDD-AAAAMMDD) com erro 400,
+    // mas aceita um mês inteiro (AAAAMM). Busca os meses da janela e filtra.
+    const from = ymd(shift(-DAYS_BACK));
+    const to = ymd(shift(DAYS_AHEAD));
+    const months = [...new Set([from.slice(0, 6), to.slice(0, 6)])];
+    const seen = new Map();
+    for (const m of months) {
+      const json = await getJson(`${base}/scoreboard?dates=${m}&limit=500`);
+      for (const g of normalizeScoreboard(json, l.id)) seen.set(g.id, g);
+    }
+    const list = [...seen.values()]
+      .filter((g) => g.date && ymd(new Date(g.date)) >= from && ymd(new Date(g.date)) <= to)
+      .sort((a, b) => (a.date ?? '').localeCompare(b.date ?? ''));
+    return envelope({ ...meta, range: `${from}-${to}` }, list);
   });
 
   const all = games.data?.data ?? [];
