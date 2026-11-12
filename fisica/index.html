@@ -1,0 +1,605 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0f1024">
+<title>Física Quest ENEM</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;700;800&family=Nunito:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0f1024; --bg2:#181a3a; --card:#20234a; --card2:#2a2e5e; --ink:#f4f5ff; --mut:#a9acd6;
+  --ok:#2ee59d; --bad:#ff5c7a; --gold:#ffcf3f; --acc:#7c5cff; --acc2:#00d4ff;
+  --r:18px;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;background:var(--bg);color:var(--ink);font-family:Nunito,system-ui,sans-serif;font-size:16px}
+body{min-height:100vh;background:radial-gradient(1200px 600px at 80% -10%,#3a2a8a55,transparent),radial-gradient(900px 500px at -10% 110%,#00d4ff22,transparent),var(--bg)}
+h1,h2,h3,.ttl{font-family:"Baloo 2",Nunito,sans-serif;margin:0;line-height:1.1}
+button{font:inherit;color:inherit;border:0;cursor:pointer}
+#app{max-width:520px;margin:0 auto;padding:12px 16px 96px}
+.top{display:flex;align-items:center;gap:10px;margin:4px 0 14px}
+.back{background:var(--card);width:40px;height:40px;border-radius:12px;font-size:20px;flex:none}
+.top h2{font-size:22px;flex:1}
+.pill{background:var(--card);border-radius:999px;padding:6px 12px;font-weight:800;font-size:14px;display:inline-flex;gap:6px;align-items:center}
+.hud{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.bar{height:12px;background:#ffffff18;border-radius:99px;overflow:hidden}
+.bar>i{display:block;height:100%;background:linear-gradient(90deg,var(--acc),var(--acc2));border-radius:99px;transition:width .4s}
+.hero{background:linear-gradient(135deg,#7c5cff,#00b3ff);border-radius:24px;padding:18px;margin-bottom:16px;position:relative;overflow:hidden}
+.hero h1{font-size:28px}
+.hero p{margin:6px 0 12px;opacity:.95}
+.hero .big{position:absolute;right:-10px;top:-6px;font-size:84px;opacity:.25;transform:rotate(12deg)}
+.map{position:relative;display:flex;flex-direction:column;gap:14px}
+.node{display:flex;gap:14px;align-items:center;background:var(--card);border-radius:var(--r);padding:14px;text-align:left;width:100%;position:relative;border:2px solid transparent;transition:transform .15s}
+.node:active{transform:scale(.97)}
+.node .ic{width:58px;height:58px;border-radius:16px;display:grid;place-items:center;font-size:30px;flex:none;box-shadow:0 6px 0 #0004}
+.node .nm{font-family:"Baloo 2";font-size:19px;font-weight:800}
+.node .ds{color:var(--mut);font-size:13px}
+.node.locked{opacity:.45;filter:grayscale(.8)}
+.node .stars{font-size:15px;letter-spacing:2px;margin-top:2px}
+.node.next{border-color:var(--gold);animation:pulse 1.6s infinite}
+@keyframes pulse{50%{box-shadow:0 0 0 6px #ffcf3f33}}
+.nav{position:fixed;left:0;right:0;bottom:0;background:#12142ef2;backdrop-filter:blur(8px);display:flex;justify-content:center;padding:8px 8px calc(8px + env(safe-area-inset-bottom));border-top:1px solid #ffffff14;z-index:20}
+.nav div{display:flex;max-width:520px;width:100%;justify-content:space-around}
+.nav button{background:none;display:flex;flex-direction:column;align-items:center;font-size:11px;color:var(--mut);padding:4px 10px;border-radius:12px}
+.nav button b{font-size:22px;line-height:1.2}
+.nav button.on{color:var(--ink);background:#ffffff10}
+.btn{display:block;width:100%;padding:15px;border-radius:16px;background:var(--acc);font-weight:800;font-size:17px;box-shadow:0 5px 0 #4b33b8;margin-top:10px;transition:transform .1s}
+.btn:active{transform:translateY(3px);box-shadow:0 2px 0 #4b33b8}
+.btn.g{background:var(--ok);color:#06281b;box-shadow:0 5px 0 #17a06b}
+.btn.y{background:var(--gold);color:#2f2300;box-shadow:0 5px 0 #b8901a}
+.btn.ghost{background:var(--card);box-shadow:0 5px 0 #0006}
+.btn[disabled]{opacity:.4}
+.step{display:flex;align-items:center;gap:12px;background:var(--card);padding:14px;border-radius:var(--r);margin-bottom:10px;width:100%;text-align:left}
+.step .n{font-size:26px;width:44px;text-align:center}
+.step .t{flex:1}
+.step .t b{display:block;font-family:"Baloo 2";font-size:18px}
+.step .t span{color:var(--mut);font-size:13px}
+.lcard{background:var(--card);border-radius:24px;padding:22px 18px;min-height:52vh;animation:in .35s;position:relative}
+@keyframes in{from{opacity:0;transform:translateY(14px) scale(.98)}}
+.lcard .em{font-size:52px;line-height:1}
+.lcard h3{font-size:24px;margin:10px 0 8px}
+.lcard p,.lcard li{line-height:1.5}
+.lcard ul{padding-left:20px;margin:8px 0}
+.f{display:inline-block;background:#0007;border:1px solid #ffffff22;border-radius:10px;padding:2px 10px;font-weight:800;font-family:"Baloo 2";font-size:18px;color:var(--gold)}
+.tip{background:linear-gradient(135deg,#ffcf3f22,#ff8a3d22);border-left:4px solid var(--gold);padding:10px 12px;border-radius:10px;margin:10px 0}
+.warn{background:#ff5c7a1f;border-left:4px solid var(--bad);padding:10px 12px;border-radius:10px;margin:10px 0}
+.dots{display:flex;gap:5px;justify-content:center;margin:12px 0}
+.dots i{width:8px;height:8px;border-radius:9px;background:#ffffff30}
+.dots i.on{background:var(--acc2);width:22px}
+.row{display:flex;gap:10px}
+.row>*{flex:1}
+.qtxt{font-size:19px;font-weight:700;line-height:1.4;margin:6px 0 16px;background:var(--card);padding:18px;border-radius:var(--r)}
+.opt{display:block;width:100%;text-align:left;padding:14px 16px;border-radius:14px;background:var(--card2);margin-bottom:10px;font-size:16px;font-weight:600;border:2px solid #ffffff10;box-shadow:0 4px 0 #0005;transition:transform .1s}
+.opt:active{transform:translateY(2px)}
+.opt.ok{background:#14513a;border-color:var(--ok)}
+.opt.bad{background:#5a1a2a;border-color:var(--bad);animation:shake .4s}
+@keyframes shake{20%,60%{transform:translateX(-7px)}40%,80%{transform:translateX(7px)}}
+.exp{background:var(--bg2);border-radius:14px;padding:14px;margin-top:6px;animation:in .3s;line-height:1.5}
+.exp b.k{color:var(--ok)} .exp b.x{color:var(--bad)}
+.combo{font-family:"Baloo 2";font-weight:800;color:var(--gold)}
+.float{position:fixed;left:50%;top:40%;transform:translate(-50%,0);font-family:"Baloo 2";font-size:34px;font-weight:800;color:var(--gold);pointer-events:none;animation:fl 1s forwards;z-index:50;text-shadow:0 3px 0 #0008}
+@keyframes fl{to{transform:translate(-50%,-90px);opacity:0}}
+.timer{height:8px;background:#ffffff18;border-radius:9px;overflow:hidden;margin:8px 0}
+.timer i{display:block;height:100%;background:linear-gradient(90deg,var(--ok),var(--gold),var(--bad));transition:width .2s linear}
+.gitem{background:var(--card);border-radius:24px;padding:28px 18px;text-align:center;font-size:22px;font-weight:800;margin:14px 0;min-height:130px;display:grid;place-items:center;animation:in .25s}
+.gitem small{display:block;font-size:44px}
+.cats{display:grid;gap:10px}
+.cat{padding:16px;border-radius:16px;font-weight:800;font-size:17px;box-shadow:0 5px 0 #0006}
+.cat:active{transform:translateY(3px)}
+.ord{display:grid;gap:8px}
+.ord button{padding:13px;border-radius:14px;background:var(--card2);font-weight:700;box-shadow:0 4px 0 #0005;text-align:left}
+.ord .done{background:#14513a;border:2px solid var(--ok);padding:11px 13px;border-radius:14px;font-weight:700;animation:in .2s}
+.result{text-align:center;padding:16px 0}
+.result .bigst{font-size:56px;letter-spacing:6px}
+.result h2{font-size:30px;margin:6px 0}
+.flip{perspective:900px;margin-bottom:12px;cursor:pointer}
+.flip .in{position:relative;transition:transform .5s;transform-style:preserve-3d;min-height:130px}
+.flip.on .in{transform:rotateY(180deg)}
+.flip .fa,.flip .fb{position:absolute;inset:0;backface-visibility:hidden;border-radius:18px;padding:16px;display:flex;flex-direction:column;justify-content:center}
+.flip .fa{background:var(--card)}
+.flip .fb{background:linear-gradient(135deg,#7c5cff,#00a6e6);transform:rotateY(180deg)}
+.flip small{color:var(--mut);font-size:12px;text-transform:uppercase;letter-spacing:1px}
+.flip .fb small{color:#fff9}
+.badge{display:flex;gap:12px;align-items:center;background:var(--card);border-radius:16px;padding:12px;margin-bottom:8px}
+.badge .e{font-size:32px}
+.badge.off{opacity:.35;filter:grayscale(1)}
+.sim{background:var(--card);border-radius:22px;padding:16px;margin-bottom:12px}
+input[type=range]{width:100%;accent-color:var(--acc2);height:34px}
+.therm{display:flex;gap:16px;align-items:flex-end;justify-content:center;height:220px}
+.tube{width:34px;height:200px;border-radius:20px;background:#ffffff14;position:relative;overflow:hidden;border:3px solid #ffffff33}
+.tube i{position:absolute;bottom:0;left:0;right:0;background:linear-gradient(0deg,#ff3d6e,#ff9f43);transition:height .2s}
+.read{font-family:"Baloo 2";font-size:22px;font-weight:800}
+.task{display:flex;gap:8px;align-items:center;padding:8px 0;border-bottom:1px dashed #ffffff18}
+.task b{font-size:20px}
+.shower{font-size:64px;text-align:center;position:relative;height:120px}
+.drops{position:absolute;left:50%;top:70px;transform:translateX(-50%);display:flex;gap:6px}
+.drops i{width:6px;height:16px;border-radius:6px;animation:drop .6s infinite}
+@keyframes drop{from{transform:translateY(0);opacity:1}to{transform:translateY(40px);opacity:0}}
+.seg{display:flex;gap:6px;background:#0005;padding:4px;border-radius:14px}
+.seg button{flex:1;padding:10px 4px;border-radius:10px;font-weight:800;background:none;font-size:14px}
+.seg button.on{background:var(--acc)}
+.muted{color:var(--mut)}
+.center{text-align:center}
+.hearts{font-size:20px;letter-spacing:2px}
+canvas#cf{position:fixed;inset:0;pointer-events:none;z-index:60}
+.chip{display:inline-block;background:#ffffff14;border-radius:8px;padding:2px 8px;margin:2px;font-size:13px}
+.daily{background:var(--card);border-radius:20px;padding:14px;margin-bottom:16px;display:flex;gap:12px;align-items:center}
+.daily .e{font-size:36px}
+.toast{position:fixed;left:50%;top:16px;transform:translateX(-50%);background:var(--gold);color:#2f2300;font-weight:800;padding:12px 18px;border-radius:14px;z-index:70;animation:in .3s;box-shadow:0 8px 30px #0008;max-width:90vw;text-align:center}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<nav class="nav"><div>
+  <button data-nav="home"><b>🗺️</b>Jornada</button>
+  <button data-nav="macetes"><b>🧠</b>Macetes</button>
+  <button data-nav="review"><b>🎯</b>Erros</button>
+  <button data-nav="profile"><b>🏆</b>Perfil</button>
+</div></nav>
+<canvas id="cf"></canvas>
+<script>
+/* ================= CONTEÚDO ================= */
+const W = [
+{id:'energia',e:'⚡',c:'#ffb703',name:'Energia Mecânica',ds:'Cinética, potencial e a conservação',
+cards:[
+{e:'🔄',t:'A regra de ouro',b:`<p>Energia <b>não se cria nem se perde</b>: ela é <b>transformada</b> ou <b>transferida</b>.</p><div class="tip">As 3 energias que o ENEM mais ama são as que o seu corpo percebe: <b>calor</b> (você sente), <b>som</b> (você escuta) e <b>luz</b> (você vê).</div>`},
+{e:'🎢',t:'O trio da Energia Mecânica',b:`<ul><li><b>Cinética</b> → precisa de <b>velocidade</b><br><span class="f">E<sub>c</sub> = m·v²/2</span></li><li><b>Potencial gravitacional</b> → precisa de <b>altura</b><br><span class="f">E<sub>g</sub> = m·g·h</span></li><li><b>Potencial elástica</b> → precisa de <b>mola deformada</b><br><span class="f">E<sub>el</sub> = k·x²/2</span></li></ul><div class="warn">Não confunda: k·x é a <b>força</b> elástica. A energia é k·x²/2.</div><p class="muted">Só a gravitacional pode ser negativa (depende de onde você põe o zero).</p>`},
+{q:'Um atleta parado no alto da plataforma de salto, antes de pular, tem principalmente qual energia?',o:['Cinética','Gravitacional','Elástica'],a:1,x:'Tem altura, não tem velocidade nem mola: gravitacional!'},
+{e:'📜',t:'O “alvará” da conservação',b:`<p>Se a questão disser <b>“despreze os atritos”, “perfeitamente liso”, “queda livre”, “sistema conservativo”</b>…</p><p class="center"><span class="f">E<sub>mec final</sub> = E<sub>mec inicial</sub></span></p><p>Exemplo: corpo abandonado de 20 m (g = 10):<br>m·g·h = m·v²/2 → v² = 2·g·h = 400 → <b>v = 20 m/s</b>. (Olha a Torricelli aparecendo sozinha! 😎)</p>`},
+{e:'🛝',t:'Dica de prova: o tobogã',b:`<p>Viu uma trajetória <b>curva, ondulada, tobogã</b> (nem reta, nem circular) e ele pede <b>velocidade</b>?</p><div class="tip">Cinemática NÃO resolve (ela só serve para MRU, MRUV e MCU). Vai direto de <b>conservação de energia</b>. Só a altura importa: de 20 m → 20 m/s, qualquer que seja o caminho.</div>`},
+{e:'👩‍👧',t:'Trabalho: a mãe das energias',b:`<p><span class="f">τ = F·d·cosθ</span> (em joules)</p><ul><li>Força perpendicular ao deslocamento (cos 90° = 0) <b>não realiza trabalho</b>.</li><li>Força contra o movimento: trabalho negativo.</li></ul><p><b>Teorema da energia cinética:</b> <span class="f">τ<sub>resultante</sub> = ΔE<sub>c</sub></span></p>`},
+{e:'🔍',t:'Análise sem conta (o ENEM adora)',b:`<p>Brinquedo de mola lança um cubo: k·x²/2 = m·v²/2 → <span class="f">v = x·√(k/m)</span></p><ul><li>Quer <b>4×</b> a velocidade mexendo só em x? → <b>4×</b> a deformação (x está fora da raiz).</li><li>Mexendo só em k? → <b>16×</b> (k está dentro da raiz: √16 = 4).</li></ul>`},
+{q:'Para dobrar a velocidade de lançamento trocando apenas a mola (mesma deformação), a nova constante k deve ser:',o:['2× maior','4× maior','8× maior','Igual'],a:1,x:'v ∝ √k. Para v dobrar, √k dobra → k fica 4× maior.'}
+],
+quiz:[
+{q:'No salto com vara (1: corre; 2: transição; 3: altura máxima; 4: cai no colchão), para atingir a maior altura é preciso que:',o:['A energia cinética da etapa 1 vire potencial elástica na etapa 4','A energia cinética da etapa 1 vire potencial gravitacional na etapa 3','A energia gravitacional da etapa 2 vire cinética na etapa 1','A energia gravitacional da etapa 1 vire elástica na etapa 4'],a:1,x:'Etapa 1 tem velocidade (cinética). Etapa 3 tem altura (gravitacional). Quanto mais rápido ele corre, mais alto ele sobe. (ENEM)'},
+{q:'Um corpo é abandonado em queda livre de 20 m (g = 10 m/s²). Com que velocidade chega ao chão?',o:['10 m/s','14 m/s','20 m/s','40 m/s'],a:2,x:'mgh = mv²/2 → v² = 2·10·20 = 400 → v = 20 m/s.'},
+{q:'Uma bolinha desce um tobogã sem atrito e todo curvo, de 45 m de altura, partindo do repouso. A velocidade no pé do tobogã é:',o:['Impossível calcular: a trajetória é curva','15 m/s','30 m/s','45 m/s'],a:2,x:'Só a altura importa: v² = 2gh = 900 → v = 30 m/s. Cinemática não resolve, energia resolve.'},
+{q:'Para que o cubo de um lançador de mola (sem atrito) saia com 4× a velocidade, o projetista pode:',o:['Manter a mola e dobrar a deformação','Manter a mola e quadruplicar a deformação','Manter a mola e aumentar 16× a deformação','Trocar por mola de k 4× maior'],a:1,x:'v = x·√(k/m). x é diretamente proporcional a v → 4× x. Para mexer em k precisaria de 16×. (ENEM)'},
+{q:'Qual destas energias pode assumir valor negativo?',o:['Cinética','Potencial elástica','Potencial gravitacional','Nenhuma'],a:2,x:'Massa e v² são positivos; k e x² também. Só a gravitacional depende do referencial escolhido.'},
+{q:'Qual frase do enunciado NÃO te dá o “alvará” para usar a conservação da energia mecânica?',o:['Despreze os atritos','A pista é perfeitamente lisa','Considere a resistência do ar e o atrito com o piso','O corpo está em queda livre'],a:2,x:'Com forças dissipativas (atrito, resistência do ar) parte da energia mecânica vira calor/som.'},
+{q:'Você carrega uma mochila andando na horizontal com velocidade constante. O peso da mochila realiza trabalho?',o:['Sim, positivo','Sim, negativo','Não: a força é perpendicular ao deslocamento','Depende da massa'],a:2,x:'τ = F·d·cos 90° = 0.'},
+{q:'O trabalho da força resultante sobre um corpo é igual à:',o:['Variação da energia cinética','Energia potencial final','Potência média','Força vezes o tempo'],a:0,x:'Teorema da energia cinética: τ_res = ΔEc. Força resultante → aceleração → muda a velocidade → muda a cinética.'},
+{q:'Um carro de 2000 kg a 40 m/s (≈144 km/h) tem energia cinética de:',o:['80.000 J','160.000 J','1.600.000 J','3.200.000 J'],a:2,x:'Ec = 2000·40²/2 = 1000·1600 = 1.600.000 J. No freio, isso vira calor (e som).'}
+],
+games:[{type:'classify',title:'Detetive da Energia',sub:'Qual energia está em destaque?',time:60,cats:[['🏃 Cinética','#ff8a3d'],['⛰️ Gravitacional','#7c5cff'],['🌀 Elástica','#00b894']],items:[
+['Atleta correndo na pista','🏃',0],['Livro no alto da prateleira','📚',1],['Estilingue esticado','🪃',2],['Carro a 120 km/h','🚗',0],['Água parada no alto da represa','🏞️',1],['Colchão afundado pelo atleta','🛏️',2],['Bola rolando no campo','⚽',0],['Arco com a flecha puxada','🏹',2],['Vaso no parapeito do 10º andar','🪴',1],['Mola de brinquedo comprimida','🧸',2],['Bala saindo do cano','💨',0],['Montanha-russa parada no topo','🎢',1],['Cama elástica afundada','🤸',2],['Ciclista pedalando','🚴',0]]}]
+},
+{id:'potencia',e:'💡',c:'#ff6b6b',name:'Potência & Rendimento',ds:'A fórmula nº 1 do ENEM',
+cards:[
+{e:'🏆',t:'Top 6 fórmulas do ENEM',b:`<ol><li><span class="f">P = E/Δt</span> potência</li><li><span class="f">P = U·i</span> potência elétrica</li><li><span class="f">U = R·i</span> 1ª lei de Ohm</li><li><span class="f">d = v·t</span> MRU</li><li><span class="f">v = λ·f</span> ondas</li><li><span class="f">Q = m·c·Δθ</span> calor sensível</li></ol><p class="muted">Domine essas seis e metade do caminho está andado.</p>`},
+{e:'⚡',t:'Potência = rapidez',b:`<p>Tudo que é “rapidez” na física é algo ÷ tempo (velocidade, aceleração, corrente…). Potência mede a <b>rapidez com que a energia é transformada ou transferida</b>.</p><p class="center"><span class="f">P = E/Δt</span> → <b>1 W = 1 J/s</b></p><div class="tip"><b>Protocolo:</b> viu <b>W</b> (watt) na prova → escreva P = E/Δt do lado. Viu <b>potência + tempo</b> (ou <b>vazão</b>) no mesmo enunciado → é certeza que vai usar.</div>`},
+{e:'🪫',t:'Rendimento',b:`<p class="center"><span class="f">η = P<sub>útil</sub> / P<sub>total</sub></span></p><p>Motor puxa 200 W mas só entrega 40 W de mecânica → η = 40/200 = <b>20%</b>.</p><div class="tip"><b>Método do mestre:</b><br>1️⃣ Escreva a fórmula do que ele PEDE.<br>2️⃣ Substitua o que o enunciado JÁ DÁ.<br>3️⃣ Busque o que falta com o que você ainda NÃO USOU.</div>`},
+{e:'💧',t:'Truque da água: 1 L = 1 kg',b:`<p>Só para a água: densidade 1 kg/L. Então vazão em L/s = vazão em kg/s.</p><p class="center"><span class="f">P = (m/Δt)·g·h = vazão·g·h</span></p><p>Usina: 3000 L/s caindo 100 m → P = 3000·10·100 = <b>3 MW</b>. Turbina com 80% → <b>2,4 MW</b> úteis.</p>`},
+{q:'Uma queda d’água de 10 m tem vazão de 500 L/s (g = 10). A potência total disponível é:',o:['5 kW','50 kW','500 kW','5 MW'],a:1,x:'P = vazão·g·h = 500·10·10 = 50.000 W = 50 kW.'},
+{e:'☀️',t:'Energia radiante: IPA',b:`<p>Luz, som e calor saem de uma fonte e se espalham. A grandeza é a <b>intensidade</b>:</p><p class="center"><span class="f">I = P/A</span> (W/m²)</p><div class="tip">Viu <b>W/m²</b> → escreva <b>IPA</b> (I = P/A) junto com P = E/Δt.</div><p>Por isso você põe as mãos em concha para gritar: mesma potência, área menor → intensidade maior. 📣</p>`},
+{e:'🏷️',t:'O “sobrenome” da potência',b:`<ul><li>Energia = trabalho → potência <b>mecânica</b></li><li>Energia = calor → potência <b>térmica</b></li><li>Energia = elétrica → potência <b>elétrica</b></li></ul><p>A fórmula geral é sempre a mesma: P = E/Δt.</p>`}
+],
+quiz:[
+{q:'Um motor de 200 W ergue 80 kg a 3 m de altura em 1 minuto (g = 10). A eficiência é:',o:['10%','20%','40%','80%'],a:1,x:'Pútil = mgh/t = 80·10·3/60 = 40 W. η = 40/200 = 20%. (ENEM PPL)'},
+{q:'Uma usina tem vazão de 3000 L/s e queda de 100 m. Com turbina de 80% de rendimento, a potência útil é:',o:['0,8 MW','2,4 MW','3,0 MW','24 MW'],a:1,x:'Ptotal = 3000·10·100 = 3 MW. 80% disso = 2,4 MW.'},
+{q:'Carro solar: insolação 1000 W/m², painel de 9 m², rendimento 30%, massa 200 kg. Do repouso até 108 km/h leva cerca de:',o:['1,0 s','4,0 s','33 s','300 s'],a:2,x:'Psolar = 1000·9 = 9000 W; Pmec = 30% = 2700 W. Ec = 200·30²/2 = 90.000 J. t = 90.000/2700 ≈ 33 s. (ENEM)'},
+{q:'Apareceu a unidade W/m² no enunciado. Qual grandeza é essa?',o:['Potência','Energia','Intensidade (I = P/A)','Pressão'],a:2,x:'W/m² = potência por área = intensidade. Escreva IPA!'},
+{q:'O que significa uma lâmpada de 60 W?',o:['Consome 60 J por hora','Transforma 60 J de energia a cada segundo','Tem 60 V','Gasta 60 kWh por dia'],a:1,x:'1 W = 1 J/s. 60 W = 60 J a cada segundo.'},
+{q:'Ao gritar com as mãos em concha você aumenta:',o:['A potência da sua voz','A intensidade do som (menor área)','A frequência do som','A velocidade do som'],a:1,x:'I = P/A. A potência é a mesma, mas a área diminui → intensidade aumenta.'},
+{q:'Uma questão fala em potência e dá a vazão de água (L/s), sem citar tempo. Qual fórmula você deve usar?',o:['P = U·i','P = E/Δt (vazão já é algo por tempo)','Q = m·c·Δθ apenas','v = λ·f'],a:1,x:'Vazão = volume/tempo = massa/tempo (para água). Potência + vazão = fórmula nº1.'},
+{q:'Uma turbina de rendimento 80% recebe 10 MW. A potência dissipada (perdida) é:',o:['0,8 MW','2 MW','8 MW','10 MW'],a:1,x:'Útil = 8 MW; dissipada = 10 − 8 = 2 MW.'}
+],
+games:[{type:'classify',title:'Alerta de Watt',sub:'Qual fórmula você escreve primeiro?',time:60,cats:[['⏱️ P = E/Δt','#ff6b6b'],['☀️ I = P/A','#ffb703'],['🪫 η = Pu/Pt','#00b894']],items:[
+['Apareceu “W” e um tempo no enunciado','⌚',0],['Painel recebe 1000 W/m²','🔆',1],['A turbina tem 80% de eficiência','🌀',2],['Energia gasta em 2 horas por um motor','⚙️',0],['Intensidade sonora de um alto-falante','🔊',1],['Só 30% vira energia elétrica','🔋',2],['Usina com vazão de 3000 L/s','💧',0],['Radiação solar por metro quadrado','🌞',1],['Motor puxa 200 W mas entrega 40 W','🛗',2],['Joules transferidos por segundo','🔥',0],['Potência espalhada sobre uma área','📡',1],['Quanto da energia foi aproveitada?','📊',2]]}]
+},
+{id:'termometria',e:'🌡️',c:'#00b3ff',name:'Termometria',ds:'Escalas, conversões e a escala maluca',
+cards:[
+{e:'🥶',t:'Calor x Temperatura: NADA a ver',b:`<ul><li><b>Temperatura</b>: mede o quanto as partículas <b>vibram</b>. Unidade: <b>kelvin (K)</b>.</li><li><b>Calor</b>: <b>energia em trânsito</b> que vai sozinha do mais quente para o mais frio. Unidade: <b>joule (J)</b>.</li></ul><p>Unidades diferentes, definições diferentes. Guarde isso: o ENEM cobra!</p>`},
+{e:'📏',t:'Os pontos fixos',b:`<table style="width:100%;text-align:center"><tr><th></th><th>°C</th><th>°F</th><th>K</th></tr><tr><td>🧊 Fusão do gelo</td><td>0</td><td>32</td><td>273</td></tr><tr><td>♨️ Ebulição da água</td><td>100</td><td>212</td><td>373</td></tr></table><p>Mais divisões = mais precisão (menos “chute” entre dois tracinhos).</p>`},
+{e:'🧊',t:'Kelvin e o zero absoluto',b:`<p>Kelvin percebeu: se temperatura é vibração, não pode existir vibração negativa! Zero de verdade = ausência de vibração ≈ <b>−273 °C</b>.</p><p class="center"><span class="f">T<sub>K</sub> = T<sub>C</sub> + 273</span></p><div class="tip">Mesma graduação → <b>ΔK = Δ°C</b>. Variação de 50 °C = variação de 50 K.<br>Em <b>PV = nRT</b>, use SEMPRE kelvin (27 °C → 300 K).</div>`},
+{e:'🇺🇸',t:'Celsius ↔ Fahrenheit',b:`<p class="center"><span class="f">T<sub>C</sub>/5 = (T<sub>F</sub> − 32)/9</span></p><p>Chegou em Orlando em janeiro e o painel diz 41 °F? (41−32)/9 = 1 → T<sub>C</sub> = <b>5 °C</b>. Frio pra danar! 🥶</p>`},
+{q:'Uma variação de 12 °C corresponde a qual variação em kelvin?',o:['12 K','285 K','261 K','21,6 K'],a:0,x:'Kelvin e Celsius têm a mesma graduação: ΔK = Δ°C.'},
+{e:'📐',t:'Escala qualquer = Tales',b:`<p>Dois termômetros lado a lado + 3 marcas = <b>Teorema de Tales</b>. Precisa só de <b>2 valores e seus 2 correspondentes</b>.</p><p class="center"><span class="f">(X − X₁)/(X₂ − X₁) = (Y − Y₁)/(Y₂ − Y₁)</span></p><p>A relação entre duas escalas é sempre uma <b>função do 1º grau</b> (reta). 📈</p>`},
+{e:'🧽',t:'O termômetro apagado (questão inédita)',b:`<p>Um solvente apagou os números. Você sabe: 20 °C → coluna de 38 mm; 32 °C → 62 mm. Num dia, a coluna marca 52 mm.</p><p>Subiu 12 °C ⇒ subiu 24 mm ⇒ <b>2 mm por °C</b>. De 38 para 52 mm = +14 mm = +7 °C → <b>27 °C</b>.</p>`}
+],
+quiz:[
+{q:'A temperatura de um corpo está associada:',o:['À quantidade de calor que ele possui','Ao grau de agitação (vibração) das suas partículas','À sua massa','À sua cor'],a:1,x:'Corpo não “possui” calor. Calor é energia em trânsito. Temperatura = vibração.'},
+{q:'O painel do aeroporto marca 41 °F. Em Celsius isso é:',o:['5 °C — frio','16 °C — ameno','41 °C — muito quente','−9 °C — congelante'],a:0,x:'TC/5 = (41−32)/9 = 1 → TC = 5 °C.'},
+{q:'Um gás está a 27 °C. Para usar em PV = nRT, a temperatura é:',o:['27 K','246 K','300 K','327 K'],a:2,x:'TK = 27 + 273 = 300 K.'},
+{q:'Termômetro com números apagados: 20 °C ↔ 38 mm; 32 °C ↔ 62 mm. Quando a coluna mede 52 mm, a temperatura é:',o:['24 °C','26 °C','27 °C','30 °C'],a:2,x:'2 mm por °C. 52 − 38 = 14 mm → +7 °C → 27 °C.'},
+{q:'Uma escala X marca 10 na fusão do gelo e 60 na ebulição da água. 40 °C corresponde a:',o:['20 X','30 X','40 X','50 X'],a:1,x:'(X−10)/(60−10) = 40/100 → X − 10 = 20 → X = 30.'},
+{q:'Por que a escala Kelvin não tem valores negativos?',o:['Por convenção comercial','Porque seu zero é a ausência de vibração (zero absoluto)','Porque só mede temperaturas altas','Porque é dividida em 180 partes'],a:1,x:'Temperatura = vibração. Não existe vibração negativa.'},
+{q:'O gráfico de uma escala termométrica em função de outra é sempre:',o:['Uma parábola','Uma reta (função do 1º grau)','Uma hipérbole','Uma exponencial'],a:1,x:'As fórmulas de conversão têm expoente 1 → função do 1º grau. Já caiu no PPL!'},
+{q:'Qual temperatura é a mesma nas escalas Celsius e Fahrenheit?',o:['0','−40','32','100'],a:1,x:'T/5 = (T−32)/9 → 9T = 5T − 160 → T = −40.'}
+],
+games:[{type:'thermo',title:'Laboratório do Termômetro',sub:'Mexa no termômetro e cumpra as missões'}]
+},
+{id:'calor',e:'🔥',c:'#ff7a2f',name:'Calorimetria',ds:'Que macete, que mala e o gráfico',
+cards:[
+{e:'♨️',t:'Calor sensível: “Que macete”',b:`<p>Calor que <b>muda a temperatura</b>:</p><p class="center"><span class="f">Q = m·c·Δθ</span></p><p><b>c</b> = calor específico. Água: <b>1 cal/g·°C</b>. Areia: ~<b>0,15</b>.</p><div class="tip">Quanto <b>maior o c</b>, mais <b>difícil variar a temperatura</b>. Por isso a areia queima o pé e o mar está geladinho (Cabo Frio 😄). Água = regulador térmico.</div>`},
+{e:'🧊',t:'Calor latente: “Que mala”',b:`<p>Calor que <b>muda o estado físico</b> com a <b>temperatura parada</b>:</p><p class="center"><span class="f">Q = m·L</span></p><ul><li>Fusão do gelo: <b>80 cal/g</b></li><li>Vaporização da água: <b>540 cal/g</b> (romper ligações é bem mais difícil)</li></ul><div class="warn">Água fervendo fica em 100 °C. “Deixar ferver mais um pouquinho para esquentar” não esquenta, vó! 👵</div>`},
+{q:'Gelo a 0 °C recebendo calor (pressão de 1 atm):',o:['Esquenta','Derrete sem mudar a temperatura','Esfria','Vira vapor imediatamente'],a:1,x:'Na mudança de estado, a temperatura fica “latente”, ou seja, parada.'},
+{e:'🪜',t:'Do gelo ao vapor em 5 etapas',b:`<p>100 g de gelo a −10 °C → vapor a 120 °C (c<sub>gelo</sub> = c<sub>vapor</sub> = 0,5):</p><ol><li>Esquenta gelo: 100·0,5·10 = <b>500</b></li><li>Derrete: 100·80 = <b>8.000</b></li><li>Esquenta água: 100·1·100 = <b>10.000</b></li><li>Ferve: 100·540 = <b>54.000</b></li><li>Esquenta vapor: 100·0,5·20 = <b>1.000</b></li></ol><p>Total: <b>73.500 cal</b>. Não dá para fazer tudo numa conta só!</p>`},
+{e:'📈',t:'O gráfico T × Q',b:`<ul><li><b>3 retas inclinadas</b>: sólido, líquido, vapor (calor sensível)</li><li><b>2 patamares</b>: fusão (o de baixo) e vaporização (o de cima)</li></ul><div class="tip">Patamar mais <b>comprido</b> → <b>maior calor latente</b>.<br>Reta mais <b>deitada</b> (pouco sobe com muito calor) → <b>maior calor específico</b>.</div>`},
+{e:'🫡',t:'Capacidade térmica: “Capitão, meu camarada”',b:`<p class="center"><span class="f">C = m·c</span> → <span class="f">Q = C·Δθ</span></p><p>c é tendência do material; <b>C é a certeza</b> do corpo (massa conta!).</p><p>Faísca de esmeril a 800 °C não queima: massa minúscula, c pequeno → <b>C desprezível</b> → entrega pouquíssimo calor. ✨</p>`},
+{e:'☕',t:'Equilíbrio térmico',b:`<p class="center"><span class="f">ΣQ = 0</span></p><ul><li>Calorímetro ideal: <b>paredes adiabáticas</b> + <b>capacidade térmica desprezível</b>.</li><li>T<sub>eq</sub> fica <b>entre</b> a menor e a maior temperatura.</li><li>Fica <b>mais perto</b> de quem tem <b>maior C</b>.</li><li>Média aritmética só se as capacidades térmicas forem <b>iguais</b>.</li></ul><div class="tip">Chute inteligente: calcule C de cada um antes de fazer a conta!</div>`},
+{q:'200 g de ferro (c = 0,1) a 400 °C entram em 400 g de água a 20 °C. A temperatura final fica mais perto de:',o:['400 °C, do ferro','210 °C, a média','20 °C, da água','Impossível estimar'],a:2,x:'C_ferro = 20 cal/°C; C_água = 400 cal/°C. A água “manda”: Teq ≈ 38,9 °C.'}
+],
+quiz:[
+{q:'O fluido arrefecedor misturado à água do radiador deve ter, para cumprir sua função:',o:['Alto calor específico','Baixo calor específico','Alta condutividade elétrica','Baixa densidade'],a:0,x:'Não pode tirar da água a característica de regulador térmico: alto c. (ENEM 2015)'},
+{q:'Ao meio-dia a areia queima o pé e a água do mar está fria. Isso porque:',o:['A água recebe menos radiação','A água tem maior calor específico','A areia tem maior calor específico','A água tem menor massa'],a:1,x:'Mesma radiação, mas a água precisa de mais energia para variar a temperatura.'},
+{q:'Calor necessário para transformar 100 g de gelo a −10 °C em vapor a 120 °C (c_gelo = c_vapor = 0,5; Lf = 80; Lv = 540):',o:['13.000 cal','64.500 cal','73.500 cal','80.000 cal'],a:2,x:'500 + 8.000 + 10.000 + 54.000 + 1.000 = 73.500 cal.'},
+{q:'No gráfico temperatura × calor de uma substância, o patamar de vaporização é bem mais comprido que o de fusão. Isso indica que:',o:['O calor latente de vaporização é maior','O calor específico do vapor é maior','A fusão ocorre a temperatura maior','A substância é impura'],a:0,x:'No eixo horizontal está o calor. Patamar longo = muito calor para mudar de estado.'},
+{q:'No mesmo gráfico T×Q, a reta do líquido é mais “deitada” que a do sólido. Logo:',o:['c do líquido > c do sólido','c do líquido < c do sólido','São iguais','L de fusão é maior'],a:0,x:'Muito calor para pouca variação de temperatura = calor específico maior.'},
+{q:'Fagulhas de um esmeril a ~800 °C tocam a pele e não queimam porque:',o:['Têm calor específico altíssimo','Têm capacidade térmica desprezível','Estão abaixo de 100 °C','São isolantes elétricos'],a:1,x:'Massa minúscula × c pequeno = C ≈ 0. Mesmo variando muito a temperatura, cedem pouco calor.'},
+{q:'100 g de café (c = 1) a 77 °C vão numa xícara (C = 10 cal/°C) a 20 °C com 100 g de leite (c = 0,9) a 20 °C. A temperatura final é aproximadamente:',o:['20 °C','48,5 °C','77 °C','82 °C'],a:1,x:'C_café = 100; C_leite = 90 (+xícara 10). Capacidades parecidas → perto da média. ΣQ = 0 → 48,5 °C.'},
+{q:'Uma usina dissipa 2 MW em água de rio que só pode aquecer 3 °C (c = 4 kJ/kg·°C). A vazão mínima de água é cerca de:',o:['67 kg/s','167 kg/s','667 kg/s','1.500 kg/s'],a:1,x:'P = (m/t)·c·Δθ → 2·10⁶ = vazão·4000·3 → vazão ≈ 167 kg/s. Olha a fórmula nº1 de novo! (ENEM)'},
+{q:'Num calorímetro ideal, a temperatura de equilíbrio será a média aritmética das iniciais quando:',o:['As massas forem iguais','Os calores específicos forem iguais','As capacidades térmicas forem iguais','Sempre'],a:2,x:'“Termicamente iguais” = mesma capacidade térmica.'},
+{q:'Para fundir 1 g de gelo são 80 cal; para vaporizar 1 g de água, 540 cal. Vaporizar é mais difícil porque:',o:['A água é mais densa','É preciso romper as ligações entre as moléculas','O vapor é invisível','A temperatura é maior'],a:1,x:'Na fusão você só enfraquece as ligações; na vaporização, rompe.'}
+],
+games:[
+{type:'classify',title:'Sensível ou Latente?',sub:'O calor muda a temperatura ou o estado?',time:50,cats:[['🌡️ Sensível (Q = mcΔθ)','#ff7a2f'],['🧊 Latente (Q = mL)','#00b3ff']],items:[
+['Gelo indo de −10 °C a 0 °C','🧊',0],['Gelo derretendo a 0 °C','💧',1],['Água indo de 0 °C a 100 °C','🫖',0],['Água fervendo a 100 °C','♨️',1],['Vapor de 100 °C a 120 °C','☁️',0],['Café esfriando na xícara','☕',0],['Chocolate derretendo na mão','🍫',1],['Suor evaporando da pele','💦',1],['Areia esquentando ao sol','🏖️',0],['Vapor condensando no espelho','🪞',1],['Ferro em brasa esfriando','⚒️',0],['Sorvete virando líquido','🍦',1]]},
+{type:'order',title:'Do gelo ao vapor',sub:'Toque nas etapas na ordem certa',items:['Esquentar o gelo de −10 a 0 °C (sensível)','Derreter o gelo a 0 °C (latente)','Esquentar a água de 0 a 100 °C (sensível)','Ferver a água a 100 °C (latente)','Esquentar o vapor de 100 a 120 °C (sensível)']}
+]
+},
+{id:'transmissao',e:'🌬️',c:'#2ee59d',name:'Transmissão de Calor & Fases',ds:'Difusão, arrasto, infravermelho',
+cards:[
+{e:'🗣️',t:'Condução → DIFUSÃO',b:`<p>A vibração passa de átomo para átomo (ligados como molas) <b>sem ninguém sair do lugar</b>. Igual fofoca! 🤫</p><ul><li>Ótima em <b>sólidos</b>, desprezível em gases</li><li><b>Não ocorre no vácuo</b></li><li>Onde há contato, há condução</li></ul>`},
+{e:'🌀',t:'Convecção → ARRASTO',b:`<p>O fluido quente fica menos denso e <b>sobe</b>; o frio, mais denso, <b>desce</b>: correntes de convecção.</p><ul><li>Só em <b>fluidos</b> (líquidos e gases)</li><li>Para <b>aquecer</b>: fonte <b>embaixo</b> (fogo na panela)</li><li>Para <b>resfriar</b>: fonte <b>em cima</b> (congelador, ar-condicionado)</li></ul>`},
+{e:'🌞',t:'Radiação → INFRAVERMELHO',b:`<p>Ondas eletromagnéticas: atravessam o <b>vácuo</b> (é assim que o Sol aquece a Terra).</p><p>Quanto mais quente o corpo, mais infravermelho emite. Aplicações: <b>termômetro de testa</b>, <b>sensor que acende a luz</b>, <b>visão noturna</b>, cobras com fosseta loreal 🐍, mariposa atraída pela lâmpada quente.</p>`},
+{q:'Qual forma de transmissão de calor NÃO precisa de meio material?',o:['Condução','Convecção','Radiação'],a:2,x:'Radiação = ondas eletromagnéticas (infravermelho). Atravessam o vácuo.'},
+{e:'🧥',t:'Sensação térmica',b:`<ul><li>Sentir <b>frio</b> = <b>perder muito calor</b></li><li>Sentir <b>quente</b> = <b>ganhar muito calor</b></li></ul><p>Lã não “esquenta”: ela <b>isola</b> (ar preso entre as fibras). Por isso o povo do deserto se cobre de lã: impede o calor de entrar!</p><div class="tip">Suor evapora e rouba calor. <b>Vento</b> acelera a evaporação (refresca). <b>Umidade</b> atrapalha (abafa). Rio: 43,5 °C com sensação de 63,7 °C = úmido e sem vento.</div>`},
+{e:'🌍',t:'Efeito estufa',b:`<p>Luz e UV entram (CO₂ e umidade são <b>transparentes</b> a elas). O chão aquece e devolve <b>infravermelho</b>, para o qual CO₂ e umidade são <b>opacos</b>. Entra mais energia do que sai.</p><ul><li>Sem ele, a Terra seria como a Lua (de −180 a 120 °C)</li><li>Aquecimento global = <b>intensificação</b> (queima de combustíveis fósseis)</li><li>Vidro faz o mesmo: estufas e carro fechado no sol 🚗🔥</li></ul>`},
+{e:'🛏️',t:'Lei de Fourier (só condução)',b:`<p class="center"><span class="f">φ = k·A·Δθ / L</span></p><p><b>L</b> = espessura (distância entre o lado quente e o frio), não a maior dimensão!</p><p>Noite fria: cobertor de <b>lã</b> (k baixo), <b>grosso</b> (L grande) e você <b>encolhido</b> (A pequena). Tudo para diminuir o fluxo! Unidade de φ: <b>W</b> (é uma potência).</p>`},
+{e:'🍲',t:'Pressão muda a ebulição',b:`<ul><li>Menos pressão (altitude) → ferve abaixo de 100 °C. Machu Picchu: <b>~87 °C</b> (comida demora mais).</li><li><b>Panela de pressão</b>: ~2 atm → ferve a <b>~120 °C</b> → cozinha mais rápido.</li><li>Água, ferro, bismuto, antimônio: a <b>pressão derrete o gelo</b> (patinação, fio de Tyndall ⛸️).</li><li>Marte (~3,4 mmHg, abaixo do ponto triplo): água só sólida ou vapor.</li></ul>`}
+],
+quiz:[
+{q:'Por que o congelador fica na parte de cima da geladeira?',o:['Para facilitar o acesso','O ar frio, mais denso, desce e cria correntes de convecção','O frio sobe por condução','Para evitar radiação'],a:1,x:'Para resfriar por convecção, a fonte fria fica em cima.'},
+{q:'O termômetro de testa, usado na pandemia, funciona detectando:',o:['Ultravioleta','Infravermelho','Luz visível','Raio X'],a:1,x:'Todo corpo quente emite infravermelho; mais quente, mais emite.'},
+{q:'Moradores do deserto usam roupas de lã porque a lã:',o:['Gera calor','É isolante e impede que eles ganhem muito calor do ambiente','Reflete raio X','Aumenta a evaporação'],a:1,x:'O que impede o calor de sair também impede o calor de entrar.'},
+{q:'No Rio, 43,5 °C com sensação de 63,7 °C. A melhor explicação:',o:['O termômetro estava errado','Umidade alta e falta de vento dificultam a evaporação do suor','Excesso de ultravioleta','A areia aquece o ar'],a:1,x:'Umidade concorre com o suor; sem vento, nada ajuda a evaporar.'},
+{q:'Um pano molhado queima a mão ao pegar a assadeira quente, e o seco não. Por quê?',o:['A água conduz o calor melhor que o ar entre as fibras','A água é condutora elétrica','O pano molhado fica mais fino','A água reflete infravermelho'],a:0,x:'Ambos são isolantes, mas o ar é bem mais. Trocar ar por água aumenta a condução. (Mesmo motivo de envolver a lata com papel molhado para gelar mais rápido.)'},
+{q:'No efeito estufa, o CO₂ e o vapor d’água são:',o:['Opacos à luz e transparentes ao infravermelho','Transparentes à luz/UV e opacos ao infravermelho','Opacos a tudo','Transparentes a tudo'],a:1,x:'A energia entra como luz/UV e tenta sair como infravermelho, que fica preso.'},
+{q:'Pela lei de Fourier, um cobertor mais grosso esquenta mais porque:',o:['Aumenta k','Aumenta L e diminui o fluxo de calor','Aumenta a área','Produz calor'],a:1,x:'φ = kAΔθ/L. L no denominador: maior espessura, menor fluxo.'},
+{q:'Fluxo de calor de 400 kcal/h, área 10 m², espessura 0,2 m, Δθ = 10 °C. A constante k (kcal/h·m·°C) é:',o:['0,2','0,8','4','20'],a:1,x:'400 = k·10·10/0,2 → 400 = 500k → k = 0,8. (ENEM 2025 reaplicação)'},
+{q:'A panela de pressão cozinha mais rápido porque:',o:['Esquenta a água acima de 100 °C ao aumentar a pressão','Diminui o calor latente','Usa menos água','Elimina a convecção'],a:0,x:'Mais pressão → maior temperatura de ebulição (~120 °C).'},
+{q:'Em Machu Picchu (~3700 m) a água ferve a cerca de 87 °C. Consequência:',o:['O arroz cozinha mais rápido','O arroz demora mais para cozinhar','A água não ferve','Nada muda'],a:1,x:'Pressão menor → ferve a temperatura menor → cozimento mais lento.'},
+{q:'A lâmina do patins permite deslizar no gelo porque:',o:['Esquenta o gelo por atrito apenas','A alta pressão numa área pequena derrete o gelo (água tem curva de fusão decrescente)','Tem calor específico alto','Emite infravermelho'],a:1,x:'Pressão = F/A. Área minúscula → pressão enorme → o gelo derrete e depois recongela.'},
+{q:'A hora mais fria do dia costuma ser:',o:['Meia-noite','Logo antes do sol nascer','Meio-dia','Final da tarde'],a:1,x:'É o maior tempo sem receber radiação, só perdendo infravermelho.'}
+],
+games:[{type:'classify',title:'Palavra Mágica',sub:'Difusão, arrasto ou infravermelho?',time:60,cats:[['🗣️ Condução','#ff8a3d'],['🌀 Convecção','#00b3ff'],['🌞 Radiação','#ffcf3f']],items:[
+['Cabo da panela esquentando','🍳',0],['Calor do Sol chegando à Terra','☀️',2],['Ar-condicionado instalado no alto','❄️',1],['Colher de metal no café quente','🥄',0],['Água circulando na panela no fogo','🫕',1],['Sentir o calor da fogueira de longe','🔥',2],['Pé descalço no piso gelado','🦶',0],['Congelador no topo da geladeira','🧊',1],['Sensor que acende a luz do corredor','💡',2],['Brisa marítima','🌊',1],['Óculos de visão noturna','🥽',2],['Ferro de passar na roupa','👔',0],['Cobra caçando no escuro','🐍',2],['Fumaça subindo da chaminé','🏭',1]]}]
+},
+{id:'eletro',e:'🔌',c:'#ffcf3f',name:'Eletrodinâmica',ds:'O assunto nº 1 do ENEM',
+cards:[
+{e:'🚰',t:'Corrente elétrica',b:`<p>Fluxo de cargas por uma área:</p><p class="center"><span class="f">i = Q/Δt</span> e <span class="f">Q = n·e</span></p><p>1 A = 1 C/s. Viu <b>e = 1,6×10⁻¹⁹ C</b>? É o <b>Q = n·e</b>, sem dúvida (é a única fórmula do ensino médio que usa).</p><div class="tip"><b>A·h</b> é unidade de <b>CARGA</b> (corrente × tempo). Bateria de 4400 mAh com 2 A dura 2,2 h = 132 min. 1 A·h = 3600 C.</div>`},
+{e:'🧵',t:'Resistência (2ª lei de Ohm)',b:`<p class="center"><span class="f">R = ρ·L/A</span></p><ul><li>Fio <b>longo</b> → mais resistência (mais átomos no caminho)</li><li>Fio <b>grosso</b> → menos resistência (estrada mais larga)</li><li>ρ depende da <b>temperatura</b>: mais quente, mais vibração, mais choques</li></ul><p>Supercondutor: temperatura baixíssima → ρ ≈ 0 → corrente sem resistência! 🧊⚡</p>`},
+{e:'💡',t:'Por que a lâmpada acende na hora?',b:`<p>A bateria <b>não manda elétrons</b>: ela cria uma <b>ddp</b>, que estabelece um <b>campo elétrico</b> no fio inteiro quase à velocidade da luz. Os elétrons livres que <b>já estavam no fio</b> começam a andar (devagarzinho, ~mm/s).</p><div class="tip">O circuito é <b>neutro</b>. É como uma mangueira já cheia d’água. (ENEM 2013)</div>`},
+{e:'🔥',t:'Efeito Joule e U = R·i',b:`<p>A corrente passa pelo resistor e gera calor. Ela <b>não diminui</b>! O que cai é o <b>potencial</b> (energia potencial elétrica vira calor).</p><p class="center"><span class="f">U = R·i</span> = quanto o potencial cai no resistor</p><p>Ex.: 10 Ω com 5 A → cai 50 V. Entrou com 120 V, sai com 70 V.</p>`},
+{q:'Depois de atravessar um resistor, a intensidade da corrente:',o:['Diminui','Aumenta','Continua igual'],a:2,x:'O que cai é o potencial. A corrente (e a energia cinética das cargas) se mantém.'},
+{e:'⚙️',t:'Potência elétrica',b:`<p><span class="f">P = U·i</span> <span class="f">P = R·i²</span> <span class="f">P = U²/R</span></p><p>Energia consumida: <span class="f">E = P·Δt</span> em <b>kWh</b>.</p><p>Chuveiro 5,4 kW, 20 h no mês, R$ 1,10/kWh → 108 kWh → <b>R$ 118,80</b> só de banho! 🚿💸</p>`},
+{e:'🏷️',t:'Valores nominais e “ligar errado”',b:`<p>Chuveiro 5500 W / 110 V: i = P/U = <b>50 A</b>; R = U²/P ≈ <b>2,2 Ω</b>.</p><div class="tip">A resistência <b>não muda</b> se você ligar na tomada errada (L, A e ρ continuam os mesmos). <b>Sempre</b> calcule R com os valores nominais e depois use a tensão nova. Ligar em 220 V um aparelho de 110 V → P = U²/R fica <b>4×</b> maior. 💥</div>`},
+{e:'🚿',t:'O mistério do chuveiro',b:`<ul><li>❄️ <b>Fria</b>: circuito aberto</li><li>🌤️ <b>Morna</b>: resistência <b>inteira</b> (maior R)</li><li>🔥 <b>Quente</b>: <b>metade</b> da resistência (menor R)</li></ul><p>Tensão da casa é constante → use <span class="f">P = U²/R</span>: menor R, maior P.</p><p>Explicação física: menor R → corrente bem maior, e em P = R·i² a corrente está <b>ao quadrado</b>. Tudo que tem botão de potência em casa tem um <b>reostato</b> dentro.</p>`}
+],
+quiz:[
+{q:'Ao fechar o interruptor, a lâmpada acende quase instantaneamente por causa da rapidez:',o:['Dos elétrons que saem da bateria','De um fluido elétrico','Do campo elétrico que se estabelece em todo o circuito','Das cargas positivas e negativas que colidem'],a:2,x:'Os elétrons andam devagar; o campo é que chega quase à velocidade da luz. (ENEM 2013)'},
+{q:'Um raio transporta corrente média de 30.000 A por 80 µs. Com e = 1,6×10⁻¹⁹ C, o número de elétrons é:',o:['2,4','1,5×10¹⁹','3,8×10¹⁸','4,8×10²⁰'],a:1,x:'Q = 3·10⁴ · 80·10⁻⁶ = 2,4 C. n = 2,4/1,6·10⁻¹⁹ = 1,5·10¹⁹. (Quem esquece o Q = n·e marca “2,4 elétrons” 😅)'},
+{q:'Bateria de notebook de 4400 mAh alimentando 2 A dura:',o:['44 min','66 min','132 min','220 min'],a:2,x:'4,4 A·h ÷ 2 A = 2,2 h = 132 min. (ENEM)'},
+{q:'“A·h”, que aparece nas baterias, é unidade de:',o:['Corrente','Potência','Carga elétrica','Tensão'],a:2,x:'Corrente × tempo = carga (Q = i·Δt).'},
+{q:'Chuveiro de 5500 W / 110 V. A corrente nominal é:',o:['2,2 A','5 A','50 A','605 A'],a:2,x:'P = U·i → i = 5500/110 = 50 A. E R = U²/P ≈ 2,2 Ω.'},
+{q:'Na posição “quente” do chuveiro, a resistência ligada é:',o:['A maior','A menor','Nenhuma','Igual à da morna'],a:1,x:'U constante → P = U²/R. Menor R → maior potência.'},
+{q:'Um chuveiro de 5400 W/220 V (Brasília) e outro de 5400 W/110 V (BH), usados pelo mesmo tempo, consomem:',o:['O de 220 V gasta o dobro','O de 110 V gasta o dobro','A mesma energia','O de 220 V gasta 4×'],a:2,x:'E = P·Δt. Mesma potência e mesmo tempo → mesmo consumo. Muda a resistência (a de 220 V é 4× maior).'},
+{q:'Um aparelho de 110 V é ligado por engano em 220 V. A potência dissipada:',o:['Fica igual','Dobra','Quadruplica','Cai pela metade'],a:2,x:'R não muda. P = U²/R: tensão 2× → potência 4×.'},
+{q:'Supercondutores conduzem sem resistência quando:',o:['Estão muito quentes','Estão a temperaturas extremamente baixas','São muito longos','São finos'],a:1,x:'ρ cai com a temperatura; perto do zero absoluto os átomos quase não atrapalham.'},
+{q:'Dobrando o comprimento de um fio e mantendo o resto, a resistência:',o:['Cai pela metade','Dobra','Quadruplica','Não muda'],a:1,x:'R = ρL/A: diretamente proporcional ao comprimento.'},
+{q:'Chuveiro de 5,4 kW, usado 20 h no mês, com tarifa de R$ 1,10/kWh. Custo:',o:['R$ 11,88','R$ 59,40','R$ 118,80','R$ 1.188,00'],a:2,x:'E = 5,4·20 = 108 kWh. 108 × 1,10 = R$ 118,80.'},
+{q:'Uma corrente de 5 A passa por um resistor de 10 Ω. A queda de potencial nele é:',o:['2 V','15 V','50 V','500 V'],a:2,x:'U = R·i = 10·5 = 50 V.'}
+],
+games:[{type:'shower',title:'Simulador de Chuveiro',sub:'Gire a chave e entenda P = U²/R'}]
+},
+{id:'ondas',e:'🌊',c:'#7c5cff',name:'Ondulatória',ds:'Meio, fonte, fórmula e fenômenos',
+cards:[
+{e:'〰️',t:'Anatomia de uma onda',b:`<p>Onda = perturbação <b>repetitiva</b> que transporta <b>energia</b> (não matéria).</p><ul><li>Crista (alto) e vale (baixo)</li><li><b>Amplitude</b>: ligada à energia</li><li><b>λ</b>: tamanho de uma oscilação completa (crista a crista)</li><li><b>T</b>: tempo de uma oscilação; <b>f = 1/T</b> (Hz)</li></ul>`},
+{e:'🐄',t:'v = λ·f e o adestramento',b:`<p class="center"><span class="f">v = λ·f</span></p><div class="tip">Quer a <b>velocidade</b>? Olhe o <b>MEIO</b>.<br>Quer a <b>frequência</b>? Olhe a <b>FONTE</b> (ela <b>nunca muda</b>).<br>Quer o <b>comprimento de onda</b>? Olhe a <b>FÓRMULA</b>.</div><p>Rádio AM 610 kHz vs FM 95,4 MHz no ar: mesma v, AM tem f menor → <b>λ maior</b>.</p>`},
+{e:'🔦',t:'Reflexão e refração',b:`<ul><li><b>Reflexão</b>: mesmo meio → v, f e λ iguais. Ângulo de incidência = ângulo de reflexão (meça sempre com a <b>normal</b>!).</li><li><b>Luz</b> ar → água: v ↓, f igual, λ ↓, aproxima da normal.</li><li><b>Som</b> ar → água: v ↑ (340 → 1500 m/s), afasta da normal. Som é mecânico: gosta de matéria!</li></ul>`},
+{q:'Uma onda passa do ar para a água. O que com certeza NÃO muda?',o:['Velocidade','Comprimento de onda','Frequência'],a:2,x:'Frequência é o DNA dado pela fonte. Nunca muda.'},
+{e:'📟',t:'Pegadinha do osciloscópio',b:`<p>No osciloscópio e no <b>eletrocardiograma</b>, o eixo horizontal é <b>TEMPO</b>. A distância entre duas cristas é o <b>período</b>, não o comprimento de onda!</p><p>ECG: 5 quadradinhos de 0,2 s = 1 s → f = 1 Hz = <b>60 bpm</b> ❤️</p>`},
+{e:'🧬',t:'Natureza das ondas',b:`<ul><li><b>Mecânica</b>: nasce perturbando a matéria → precisa de meio. Explosão com barulho no espaço é licença poética de filme! 🚀🔇</li><li><b>Eletromagnética</b>: campos elétrico e magnético oscilando (carga oscilante) → vai no vácuo a 3×10⁸ m/s.</li><li><b>Gravitacional</b>: ondulação do próprio espaço-tempo (Einstein, LIGO 2015). Nem mecânica nem eletromagnética!</li></ul>`},
+{e:'🌈',t:'Espectro eletromagnético',b:`<p>Rádio longas → curtas → micro-ondas → infravermelho → <b>luz</b> (vermelho…violeta) → UV → raio X → gama</p><p>➡️ f aumenta, λ diminui, penetração aumenta.</p><ul><li>Do <b>UV</b> em diante: <b>ionizantes</b> (podem causar câncer ao ionizar o DNA)</li><li>Antes: não ionizantes (fazem vibrar). Micro-ondas <b>não</b> dá câncer.</li><li>Mais frequência na internet (1G→5G): mais dados, menos alcance. Fibra óptica: reflexão total.</li></ul>`},
+{e:'🍷',t:'Ressonância',b:`<p>Se a frequência da onda = <b>frequência natural</b> do corpo → a amplitude vai às alturas.</p><p>Cantora quebra a taça (~700 Hz). Sintonizar o rádio = ajustar a frequência natural do circuito à da estação. 📻</p>`},
+{e:'🐱',t:'Eco e difração',b:`<ul><li><b>Eco</b>: reflexão do som. O cérebro segura o som por 0,1 s → distância mínima <b>17 m</b> (2L = 340·0,1). Menos que isso: reverberação.</li><li><b>Difração</b>: contornar obstáculos/fendas. Só ocorre se <b>λ ≈ tamanho do obstáculo</b>.</li></ul><p>Som do miado (λ ≈ 3,4 m) contorna o muro; luz (λ ~10⁻⁷ m) não. Você <b>ouve</b> o gato mas <b>não vê</b>! 🧱</p><p class="muted">Som: 20 a 20.000 Hz. Abaixo: infrassom (elefante). Acima: ultrassom (morcego, golfinho, cão). Altura (agudo/grave) = frequência.</p>`}
+],
+quiz:[
+{q:'Após uma reflexão, o comprimento de onda:',o:['Aumenta','Diminui','Permanece igual'],a:2,x:'Mesmo meio (v igual) e mesma fonte (f igual) → λ igual.'},
+{q:'A luz passa do ar para a água. Velocidade, frequência e comprimento de onda ficam:',o:['v↓, f igual, λ↓','v↑, f↑, λ igual','v↓, f↓, λ igual','v igual, f igual, λ igual'],a:0,x:'Meio mais refringente: v diminui. f nunca muda. v = λf → λ diminui.'},
+{q:'Rádio AM (610 kHz) e FM (95,4 MHz) se propagam no ar. Comparando:',o:['FM tem maior λ','AM tem maior λ','Mesmo λ','AM é mais rápida'],a:1,x:'Mesma velocidade no ar; menor frequência → maior comprimento de onda.'},
+{q:'Uma goteira cai na piscina e passa de 2 para 1 gota por segundo. As ondas ficam com:',o:['Mesma velocidade e maior λ','Maior velocidade e mesmo λ','Menor velocidade e menor λ','Mesma velocidade e menor λ'],a:0,x:'Meio igual → v igual. Fonte mais lenta → f menor → λ maior. (ENEM 2012)'},
+{q:'Num eletrocardiograma, entre dois picos há 5 quadradinhos de 0,2 s. A frequência cardíaca é:',o:['30 bpm','60 bpm','100 bpm','300 bpm'],a:1,x:'T = 1 s → f = 1 Hz → 60 batimentos por minuto.'},
+{q:'Uma garota tentou se bronzear sob uma lâmpada incandescente e não conseguiu. A luz emitida tem:',o:['Baixa intensidade','Frequência menor que a do ultravioleta','Comprimento de onda curto demais','Amplitude inadequada'],a:1,x:'Quem estimula a melanina é o UV, que tem frequência maior que a luz visível. (ENEM 2012)'},
+{q:'Ao sintonizar uma estação, o rádio absorve energia máxima de uma só frequência. É o fenômeno da:',o:['Difração','Ressonância','Refração','Interferência'],a:1,x:'Frequência natural do receptor = frequência da onda.'},
+{q:'Laila ouve a gatinha miando atrás do muro, mas não consegue vê-la. Explicação:',o:['A luz é mais lenta que o som','O som sofre difração (λ comparável ao muro); a luz não (λ muito menor)','O som reflete no chão','A luz é absorvida pelo ar'],a:1,x:'Difração exige λ próximo do tamanho do obstáculo.'},
+{q:'Para ouvir o eco da própria voz (som a 340 m/s), o obstáculo deve estar a pelo menos:',o:['3,4 m','17 m','34 m','340 m'],a:1,x:'Ida e volta em 0,1 s: 2L = 340·0,1 → L = 17 m.'},
+{q:'Explosões com barulho no espaço em filmes são “licença poética” porque:',o:['O som é onda eletromagnética','O som é onda mecânica e não se propaga no vácuo','No espaço o som é rápido demais','A luz abafa o som'],a:1,x:'Onda mecânica precisa de meio material.'},
+{q:'As ondas gravitacionais detectadas pelo LIGO são:',o:['Mecânicas e longitudinais','Eletromagnéticas e transversais','Perturbações do espaço-tempo, nem mecânicas nem eletromagnéticas','Ondas sonoras no vácuo'],a:2,x:'Não precisam de meio (não são mecânicas) e não são campos E e B oscilantes.'},
+{q:'O som passa do ar para a água. Sua velocidade:',o:['Diminui','Aumenta','Não muda'],a:1,x:'Onda mecânica: mais matéria junta favorece a propagação (≈1500 m/s na água).'},
+{q:'O forno de micro-ondas pode causar câncer por ionizar o DNA?',o:['Sim, é radiação ionizante','Não: micro-ondas são não ionizantes','Só se a porta estiver aberta','Sim, pois tem λ curto'],a:1,x:'Ionizantes começam no ultravioleta.'},
+{q:'A “altura” de um som (agudo × grave) está ligada à:',o:['Intensidade','Frequência','Amplitude','Velocidade'],a:1,x:'Agudo = alta frequência. Volume é intensidade.'}
+],
+games:[
+{type:'classify',title:'Caça-Fenômenos',sub:'Que fenômeno é esse?',time:60,cats:[['🪞 Reflexão/Eco','#00b3ff'],['🥢 Refração','#2ee59d'],['🧱 Difração','#ff8a3d'],['🍷 Ressonância','#ff5c7a']],items:[
+['Ouvir o próprio grito no desfiladeiro','🏔️',0],['Ouvir a conversa atrás do muro','🧱',2],['Cantora quebra a taça de cristal','🎤',3],['Sintonizar a estação de rádio','📻',3],['Lápis parece quebrado no copo d’água','✏️',1],['Som acelerando ao entrar na água','🐋',1],['Ondas do mar contornando o píer','🌊',2],['Ver o rosto no espelho','🪞',0],['Sonar do morcego','🦇',0],['Ondas passando por uma fenda e abrindo em leque','🚪',2],['Luz desviando ao entrar no vidro','🔍',1],['Ponte balançando com o vento ritmado','🌉',3]]},
+{type:'order',title:'Escadinha do Espectro',sub:'Da MENOR para a MAIOR frequência',items:['Ondas longas de rádio','Ondas curtas de rádio','Micro-ondas','Infravermelho','Luz visível','Ultravioleta','Raio X','Raio gama']}
+]
+}
+];
+
+const MACETES = [
+['Viu W (watt) no enunciado','Escreva P = E/Δt do lado. Potência + tempo (ou vazão) = use com certeza.'],
+['Viu W/m²','IPA: I = P/A. Intensidade de energia radiante (luz, som, calor).'],
+['Questão de rendimento','η = Pútil/Ptotal. Comece pela fórmula do que ele pede, substitua o que já tem, busque o que falta.'],
+['Água: L/s e kg/s','1 L = 1 kg. Vazão em L/s = vazão em kg/s. P = vazão·g·h ou vazão·c·Δθ.'],
+['“Despreze os atritos”','Alvará: Emec final = Emec inicial.'],
+['Tobogã curvo pedindo velocidade','Só energia resolve: v² = 2gh. Cinemática não serve.'],
+['Velocidade, altura ou mola?','Velocidade → cinética. Altura → gravitacional. Mola deformada → elástica.'],
+['Q = m·c·Δθ','“Que macete” — calor sensível: muda a temperatura.'],
+['Q = m·L','“Que mala” — calor latente: muda o estado, temperatura parada.'],
+['C = m·c','“Capitão, meu camarada” — capacidade térmica. Q = C·Δθ.'],
+['Temperatura de equilíbrio','Entre a mínima e a máxima; perto de quem tem maior C. Média só se C iguais.'],
+['Gráfico T × Q','3 retas inclinadas (sólido, líquido, vapor) + 2 patamares (fusão, vaporização). Patamar longo = L grande; reta deitada = c grande.'],
+['Celsius ↔ Fahrenheit','TC/5 = (TF − 32)/9. Kelvin: TK = TC + 273 e ΔK = Δ°C.'],
+['Escala desconhecida','Tales: (X − X₁)/(X₂ − X₁) = (Y − Y₁)/(Y₂ − Y₁). É sempre uma reta.'],
+['Condução, convecção, radiação','Difusão (fofoca) · Arrasto (correntes) · Infravermelho (vácuo).'],
+['Sentir frio / quente','Frio = perder muito calor. Quente = ganhar muito calor. Lã isola, não aquece.'],
+['Lei de Fourier','φ = k·A·Δθ/L. L = espessura entre o lado quente e o frio. Só condução.'],
+['Panela de pressão','Mais pressão → ferve acima de 100 °C → cozinha mais rápido.'],
+['Q = i·Δt e Q = n·e','Viu 1,6×10⁻¹⁹ C → use Q = n·e. A·h é unidade de carga.'],
+['R = ρ·L/A','Longo atrapalha, grosso ajuda, temperatura alta aumenta ρ.'],
+['Ligou na tomada errada','R não muda! Ache R com os valores nominais (R = U²/P) e use a tensão nova.'],
+['Chuveiro','Fria = aberto. Morna = R inteira. Quente = R menor. P = U²/R.'],
+['Ondas: para onde olhar?','Velocidade → MEIO. Frequência → FONTE (nunca muda). λ → FÓRMULA v = λf.'],
+['Osciloscópio / ECG','Eixo horizontal é tempo: entre cristas = PERÍODO.'],
+['Difração','Só acontece se λ ≈ tamanho do obstáculo. Som contorna muro, luz não.'],
+['Espectro','Rádio → micro → IV → luz → UV → X → gama: f ↑, λ ↓. Do UV para cima: ionizante.'],
+['Eco','Distância mínima de 17 m (0,1 s de persistência acústica).']
+];
+
+const LEVELS=['Calouro Curioso','Aprendiz de Joule','Explorador do Watt','Domador de Calorias','Surfista de Ondas','Senhor dos Circuitos','Lenda do ENEM'];
+
+/* ================= ESTADO ================= */
+const KEY='fisicaQuest_v1';
+let S;
+function load(){let d=null;try{d=JSON.parse(localStorage.getItem(KEY))}catch(e){}
+ S=Object.assign({xp:0,w:{},review:[],badges:{},streak:{last:'',n:0},boss:0,free:false,maxCombo:0,answered:0},d||{});
+ W.forEach(w=>{S.w[w.id]=Object.assign({lesson:false,quiz:0,games:{}},S.w[w.id]||{})});}
+function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
+load();
+// sequência de dias
+(function(){const t=new Date().toISOString().slice(0,10);if(S.streak.last!==t){const y=new Date(Date.now()-864e5).toISOString().slice(0,10);S.streak.n=S.streak.last===y?S.streak.n+1:1;S.streak.last=t;save();}})();
+
+const ALLQ=[];W.forEach(w=>w.quiz.forEach((q,i)=>{q.id=w.id+'_'+i;q.w=w.id;ALLQ.push(q)}));
+const QBYID=Object.fromEntries(ALLQ.map(q=>[q.id,q]));
+
+/* ================= UTIL ================= */
+const app=document.getElementById('app');
+let timers=[];
+function clearTimers(){timers.forEach(clearInterval);timers=[]}
+function h(html){clearTimers();app.innerHTML=html;window.scrollTo(0,0)}
+function shuffle(a){a=a.slice();for(let i=a.length-1;i>0;i--){const j=Math.random()*(i+1)|0;[a[i],a[j]]=[a[j],a[i]]}return a}
+function on(sel,fn){app.querySelectorAll(sel).forEach(el=>el.onclick=e=>fn(el,e))}
+function level(){return Math.floor(S.xp/150)+1}
+function title(){return LEVELS[Math.min(level()-1,LEVELS.length-1)]}
+function addXP(n){const l=level();S.xp+=n;save();if(level()>l){sfx('lvl');confetti();toast(`🎉 Subiu para o nível ${level()}: ${title()}!`)}}
+function floatTxt(t){const d=document.createElement('div');d.className='float';d.textContent=t;document.body.appendChild(d);setTimeout(()=>d.remove(),1000)}
+function toast(t){const d=document.createElement('div');d.className='toast';d.textContent=t;document.body.appendChild(d);setTimeout(()=>d.remove(),2600)}
+function vib(p){try{navigator.vibrate&&navigator.vibrate(p)}catch(e){}}
+let AC;function sfx(k){try{AC=AC||new (window.AudioContext||window.webkitAudioContext)();const seq={ok:[[660,.08],[880,.12]],bad:[[220,.18]],lvl:[[523,.1],[659,.1],[784,.1],[1047,.25]],tap:[[500,.04]]}[k];let t=AC.currentTime;seq.forEach(([f,d])=>{const o=AC.createOscillator(),g=AC.createGain();o.type=k==='bad'?'sawtooth':'triangle';o.frequency.value=f;g.gain.setValueAtTime(.12,t);g.gain.exponentialRampToValueAtTime(.001,t+d);o.connect(g);g.connect(AC.destination);o.start(t);o.stop(t+d);t+=d})}catch(e){}}
+function confetti(){const c=document.getElementById('cf'),x=c.getContext('2d');c.width=innerWidth;c.height=innerHeight;const cols=['#ffcf3f','#7c5cff','#00d4ff','#2ee59d','#ff5c7a'];let p=Array.from({length:140},()=>({x:c.width/2,y:c.height/3,vx:(Math.random()-.5)*14,vy:Math.random()*-12-3,s:Math.random()*7+4,c:cols[Math.random()*5|0],r:Math.random()*6}));let n=0;(function f(){x.clearRect(0,0,c.width,c.height);p.forEach(q=>{q.x+=q.vx;q.y+=q.vy;q.vy+=.35;q.r+=.2;x.save();x.translate(q.x,q.y);x.rotate(q.r);x.fillStyle=q.c;x.fillRect(-q.s/2,-q.s/2,q.s,q.s*.6);x.restore()});if(++n<120)requestAnimationFrame(f);else x.clearRect(0,0,c.width,c.height)})()}
+function stars(id){const s=S.w[id],w=W.find(x=>x.id===id);let n=0;if(s.lesson)n++;if(s.quiz>=.7)n++;if(w.games.every((g,i)=>s.games[i]&&s.games[i].pass))n++;return n}
+function unlocked(i){return S.free||i===0||S.w[W[i-1].id].quiz>=.7}
+function bossUnlocked(){return S.free||W.every(w=>S.w[w.id].quiz>=.7)}
+function setNav(k){document.querySelectorAll('.nav button').forEach(b=>b.classList.toggle('on',b.dataset.nav===k))}
+document.querySelectorAll('.nav button').forEach(b=>b.onclick=()=>{sfx('tap');go[b.dataset.nav]()});
+function topbar(t,back){return `<div class="top"><button class="back" id="bk">←</button><h2>${t}</h2></div>`}
+function bindBack(fn){const b=document.getElementById('bk');if(b)b.onclick=()=>{sfx('tap');fn()}}
+
+const BADGES=[
+['🚀','Primeiro passo','Conclua sua primeira lição',()=>W.some(w=>S.w[w.id].lesson)],
+['🔥','Combo x5','Acerte 5 seguidas',()=>S.maxCombo>=5],
+['⚡','Combo x10','Acerte 10 seguidas',()=>S.maxCombo>=10],
+['🧊','Mestre do Que Macete','100% no quiz de Calorimetria',()=>S.w.calor.quiz>=1],
+['🔌','Senhor dos Circuitos','100% no quiz de Eletrodinâmica',()=>S.w.eletro.quiz>=1],
+['🌊','Surfista do Espectro','100% no quiz de Ondulatória',()=>S.w.ondas.quiz>=1],
+['🗺️','Mapa completo','3 estrelas em todos os mundos',()=>W.every(w=>stars(w.id)===3)],
+['🎯','Caçador de Erros','Zere a lista de erros após errar algo',()=>S.badges.cleaner],
+['👑','Chefão derrotado','Vença o Simulado Final',()=>S.boss>0],
+['📅','Constância','3 dias seguidos estudando',()=>S.streak.n>=3],
+['💯','Centenário','Responda 100 questões',()=>S.answered>=100]
+];
+function checkBadges(){BADGES.forEach(([e,n,d,f])=>{if(!S.badges[n]&&f()){S.badges[n]=1;save();setTimeout(()=>{toast(`${e} Conquista: ${n}!`);sfx('lvl')},400)}})}
+
+/* ================= TELAS ================= */
+const go={};
+go.home=function(){setNav('home');
+ const tot=W.reduce((a,w)=>a+stars(w.id),0);
+ const nextI=W.findIndex((w,i)=>unlocked(i)&&stars(w.id)<3);
+ const daily=ALLQ[(new Date().getDate()*7+new Date().getMonth()*31)%ALLQ.length];
+ h(`<div class="hud" style="justify-content:space-between;margin-bottom:12px">
+   <span class="pill">⭐ ${tot}/${W.length*3}</span><span class="pill">🔥 ${S.streak.n} dia${S.streak.n>1?'s':''}</span><span class="pill">💎 ${S.xp} XP</span></div>
+ <div class="hero"><div class="big">⚛️</div><h1>Física Quest</h1><p>Nível ${level()} · <b>${title()}</b></p>
+ <div class="bar"><i style="width:${(S.xp%150)/1.5}%"></i></div><p style="font-size:13px;margin:6px 0 0">${150-S.xp%150} XP para o próximo nível</p></div>
+ <button class="daily" id="daily" style="width:100%;text-align:left"><div class="e">🎁</div><div><b class="ttl" style="font-size:18px">Desafio do dia</b><div class="muted" style="font-size:13px">1 questão surpresa · +30 XP</div></div></button>
+ <div class="map">${W.map((w,i)=>{const u=unlocked(i),st=stars(w.id);return `<button class="node ${u?'':'locked'} ${i===nextI?'next':''}" data-i="${i}">
+   <div class="ic" style="background:${w.c}">${u?w.e:'🔒'}</div><div><div class="muted" style="font-size:12px">MUNDO ${i+1}</div><div class="nm">${w.name}</div><div class="ds">${w.ds}</div><div class="stars">${'⭐'.repeat(st)}${'☆'.repeat(3-st)}</div></div></button>`}).join('')}
+ <button class="node ${bossUnlocked()?'':'locked'}" id="boss"><div class="ic" style="background:linear-gradient(135deg,#ffcf3f,#ff5c7a)">${bossUnlocked()?'👑':'🔒'}</div><div><div class="muted" style="font-size:12px">CHEFÃO FINAL</div><div class="nm">Simulado ENEM</div><div class="ds">15 questões misturadas · 3 vidas · relógio</div><div class="stars">${S.boss?'🏆 Vencido '+S.boss+'×':'Passe nos 7 quizzes para liberar'}</div></div></button>
+ </div>`);
+ on('.node[data-i]',el=>{const i=+el.dataset.i;if(!unlocked(i)){vib(80);toast('🔒 Passe no quiz do mundo anterior (70%) para liberar!');return}sfx('tap');go.world(W[i].id)});
+ document.getElementById('boss').onclick=()=>{if(!bossUnlocked()){toast('🔒 Passe nos quizzes de todos os mundos primeiro!');return}go.bossIntro()};
+ document.getElementById('daily').onclick=()=>{const t=new Date().toISOString().slice(0,10);if(S.dailyDone===t){toast('✅ Desafio de hoje feito! Volte amanhã.');return}
+   runQuiz([daily],{title:'🎁 Desafio do dia',onEnd:r=>{if(r.right){S.dailyDone=t;addXP(20);save()}go.home()}})};
+};
+
+go.world=function(id){setNav('home');const w=W.find(x=>x.id===id),s=S.w[id];
+ h(`${topbar(w.e+' '+w.name)}
+ <div class="hero" style="background:linear-gradient(135deg,${w.c},#2a2e5e)"><div class="big">${w.e}</div><p style="margin:0">${w.ds}</p><div class="stars" style="font-size:24px;margin-top:6px">${'⭐'.repeat(stars(id))}${'☆'.repeat(3-stars(id))}</div></div>
+ <button class="step" id="l"><div class="n">📖</div><div class="t"><b>1. Lição relâmpago</b><span>${w.cards.length} cards com macetes</span></div>${s.lesson?'✅':'▶️'}</button>
+ <button class="step" id="q"><div class="n">🧩</div><div class="t"><b>2. Quiz estilo ENEM</b><span>${w.quiz.length} questões · melhor: ${Math.round(s.quiz*100)}% (precisa de 70%)</span></div>${s.quiz>=.7?'✅':'▶️'}</button>
+ ${w.games.map((g,i)=>`<button class="step" data-g="${i}"><div class="n">🎮</div><div class="t"><b>${3+i}. ${g.title}</b><span>${g.sub}</span></div>${s.games[i]&&s.games[i].pass?'✅':'▶️'}</button>`).join('')}
+ <p class="muted center" style="font-size:13px">Dica: faça a lição antes do quiz. Cada erro vai para a aba 🎯 Erros para você revisar.</p>`);
+ bindBack(go.home);
+ document.getElementById('l').onclick=()=>go.lesson(id,0);
+ document.getElementById('q').onclick=()=>runQuiz(shuffle(w.quiz),{title:w.e+' Quiz',wid:id,onEnd:()=>go.world(id)});
+ on('[data-g]',el=>go.game(id,+el.dataset.g));
+};
+
+go.lesson=function(id,i){const w=W.find(x=>x.id===id),c=w.cards[i],last=i===w.cards.length-1;
+ const dots=`<div class="dots">${w.cards.map((_,k)=>`<i class="${k===i?'on':''}"></i>`).join('')}</div>`;
+ if(c.q){ // checagem rápida
+  h(`${topbar('⚡ Checagem rápida')}${dots}<div class="lcard"><div class="em">🤔</div><h3>${c.q}</h3><div id="ops">${shuffle(c.o.map((t,k)=>({t,k}))).map(o=>`<button class="opt" data-k="${o.k}">${o.t}</button>`).join('')}</div><div id="ex"></div></div>`);
+  bindBack(()=>go.world(id));
+  on('#ops .opt',el=>{if(app.querySelector('.opt.ok'))return;const k=+el.dataset.k;
+   if(k===c.a){el.classList.add('ok');sfx('ok');addXP(5);floatTxt('+5');document.getElementById('ex').innerHTML=`<div class="exp"><b class="k">Isso!</b> ${c.x}</div><button class="btn g" id="nx">Continuar →</button>`;document.getElementById('nx').onclick=()=>last?finishLesson(id):go.lesson(id,i+1)}
+   else{el.classList.add('bad');sfx('bad');vib(120);el.disabled=true;document.getElementById('ex').innerHTML=`<div class="exp"><b class="x">Quase!</b> Tente de novo. 💪</div>`}});
+  return}
+ h(`${topbar(w.e+' Lição')}${dots}<div class="lcard"><div class="em">${c.e}</div><h3>${c.t}</h3>${c.b}</div>
+ <div class="row">${i>0?'<button class="btn ghost" id="pv">← Voltar</button>':''}<button class="btn ${last?'y':''}" id="nx">${last?'Concluir 🎉':'Próximo →'}</button></div>`);
+ bindBack(()=>go.world(id));
+ if(i>0)document.getElementById('pv').onclick=()=>go.lesson(id,i-1);
+ document.getElementById('nx').onclick=()=>{sfx('tap');last?finishLesson(id):go.lesson(id,i+1)};
+ let sx=null;const lc=app.querySelector('.lcard');lc.addEventListener('touchstart',e=>sx=e.touches[0].clientX,{passive:true});lc.addEventListener('touchend',e=>{if(sx===null)return;const dx=e.changedTouches[0].clientX-sx;if(dx<-60)last?finishLesson(id):go.lesson(id,i+1);else if(dx>60&&i>0)go.lesson(id,i-1);sx=null});
+};
+function finishLesson(id){const first=!S.w[id].lesson;S.w[id].lesson=true;save();if(first){addXP(30);confetti();sfx('lvl')}checkBadges();
+ h(`<div class="result"><div class="bigst">📖✨</div><h2>Lição concluída!</h2><p class="muted">${first?'+30 XP':'Revisão feita'} — agora prove que aprendeu.</p><button class="btn g" id="q">Ir para o quiz 🧩</button><button class="btn ghost" id="b">Voltar ao mundo</button></div>`);
+ const w=W.find(x=>x.id===id);document.getElementById('q').onclick=()=>runQuiz(shuffle(w.quiz),{title:w.e+' Quiz',wid:id,onEnd:()=>go.world(id)});document.getElementById('b').onclick=()=>go.world(id)}
+
+/* ---------- motor de quiz ---------- */
+let Q;
+function runQuiz(qs,opts){Q={qs,i:0,right:0,combo:0,wrong:[],opts,lives:opts.lives||0};showQ()}
+function showQ(){const q=Q.qs[Q.i],o=Q.opts;const ord=shuffle(q.o.map((t,k)=>({t,k})));
+ h(`${topbar(o.title)}<div class="hud" style="justify-content:space-between"><span class="pill">${Q.i+1}/${Q.qs.length}</span>${o.lives?`<span class="hearts">${'❤️'.repeat(Q.lives)}${'🖤'.repeat(3-Q.lives)}</span>`:''}<span class="pill combo">🔥 x${Q.combo}</span></div>
+ <div class="bar" style="margin:10px 0"><i style="width:${Q.i/Q.qs.length*100}%"></i></div>${o.time?'<div class="timer"><i id="tm" style="width:100%"></i></div>':''}
+ <div class="qtxt">${q.q}</div><div id="ops">${ord.map(x=>`<button class="opt" data-k="${x.k}">${x.t}</button>`).join('')}</div><div id="ex"></div>`);
+ bindBack(()=>{if(confirm('Sair do quiz? O progresso desta rodada será perdido.'))o.wid?go.world(o.wid):go.home()});
+ let done=false;
+ const answer=k=>{if(done)return;done=true;clearTimers();const ok=k===q.a;S.answered++;
+  app.querySelectorAll('#ops .opt').forEach(b=>{const bk=+b.dataset.k;if(bk===q.a)b.classList.add('ok');else if(bk===k)b.classList.add('bad');b.disabled=true});
+  if(ok){Q.right++;Q.combo++;S.maxCombo=Math.max(S.maxCombo,Q.combo);const g=10+Math.min(Q.combo-1,5)*2;addXP(g);floatTxt(`+${g}${Q.combo>2?' 🔥':''}`);sfx('ok');vib(30);
+    if(o.review){S.review=S.review.filter(x=>x!==q.id)}}
+  else{Q.combo=0;Q.wrong.push(q);sfx('bad');vib([80,40,80]);if(!S.review.includes(q.id))S.review.push(q.id);if(o.lives)Q.lives--}
+  save();
+  const lastQ=Q.i===Q.qs.length-1||(o.lives&&Q.lives<=0);
+  document.getElementById('ex').innerHTML=`<div class="exp">${k===-1?'<b class="x">⏰ Tempo esgotado!</b> ':ok?'<b class="k">✅ Mandou bem!</b> ':'<b class="x">❌ Não foi dessa vez.</b> '}${q.x}</div><button class="btn ${ok?'g':''}" id="nx">${lastQ?'Ver resultado':'Próxima →'}</button>`;
+  document.getElementById('nx').onclick=()=>{if(lastQ)endQuiz();else{Q.i++;showQ()}}};
+ on('#ops .opt',el=>answer(+el.dataset.k));
+ if(o.time){let t=o.time,tm=document.getElementById('tm');timers.push(setInterval(()=>{t-=.2;tm.style.width=(t/o.time*100)+'%';if(t<=0)answer(-1)},200))}
+}
+function endQuiz(){const o=Q.opts,n=Q.qs.length,pct=Q.right/n;let msg='',st='';
+ if(o.wid){const s=S.w[o.wid];const prev=s.quiz;s.quiz=Math.max(s.quiz,pct);save();
+  st=pct>=.9?'⭐⭐⭐':pct>=.7?'⭐⭐☆':pct>=.4?'⭐☆☆':'☆☆☆';
+  msg=pct>=.7?(prev<.7?'🔓 Próximo mundo liberado!':'Aprovado de novo!'):'Precisa de 70% para avançar. Revise a lição e tente de novo!'}
+ if(o.boss){const win=Q.lives>0&&pct>=.6;if(win){S.boss++;save()}st=win?'👑🏆👑':'💀';msg=win?'VOCÊ DERROTOU O CHEFÃO! Pronto para domingo!':'O chefão venceu desta vez. Revise os erros e volte mais forte!'}
+ if(o.review){if(!S.review.length){S.badges.cleaner=1;save()}msg=S.review.length?`Ainda restam ${S.review.length} para dominar.`:'Lista de erros zerada! 🎯'}
+ if(pct>=.7||(o.boss&&S.boss))confetti();
+ checkBadges();
+ h(`<div class="result"><div class="bigst">${st||(pct>=.7?'🎉':'💪')}</div><h2>${Q.right}/${n} acertos</h2><p>${msg}</p>
+ ${Q.wrong.length?`<div class="exp" style="text-align:left"><b>Para revisar:</b><br>${Q.wrong.map(q=>'• '+q.q.slice(0,90)+(q.q.length>90?'…':'')).join('<br>')}</div>`:''}
+ <button class="btn g" id="ok">Continuar</button>${Q.wrong.length&&!o.review?'<button class="btn ghost" id="rv">🎯 Revisar erros agora</button>':''}</div>`);
+ document.getElementById('ok').onclick=()=>o.onEnd?o.onEnd({right:Q.right,n}):go.home();
+ const rv=document.getElementById('rv');if(rv)rv.onclick=go.review;
+}
+
+/* ---------- jogos ---------- */
+go.game=function(id,gi){const w=W.find(x=>x.id===id),g=w.games[gi];({classify:gClassify,order:gOrder,thermo:gThermo,shower:gShower})[g.type](w,g,gi)};
+function gameDone(w,gi,pass,score){const s=S.w[w.id];const prev=s.games[gi]||{pass:false,best:0};s.games[gi]={pass:prev.pass||pass,best:Math.max(prev.best,score||0)};if(pass&&!prev.pass){addXP(40);confetti();sfx('lvl')}save();checkBadges()}
+function gIntro(w,g,gi,how,start){h(`${topbar('🎮 '+g.title)}<div class="lcard center"><div class="em">${w.e}</div><h3>${g.title}</h3><p>${g.sub}</p><div class="tip" style="text-align:left">${how}</div><button class="btn y" id="go">Começar!</button></div>`);bindBack(()=>go.world(w.id));document.getElementById('go').onclick=start}
+
+function gClassify(w,g,gi){gIntro(w,g,gi,`⏱️ ${g.time} segundos para classificar ${g.items.length} cartas.<br>🔥 Acertos seguidos multiplicam os pontos.<br>✅ Acerte 80% de tudo para ganhar a estrela.`,()=>{
+ const G={items:shuffle(g.items),i:0,ok:0,score:0,combo:0,t:g.time};
+ const draw=()=>{const it=G.items[G.i];h(`${topbar('🎮 '+g.title)}<div class="hud" style="justify-content:space-between"><span class="pill">${G.i+1}/${G.items.length}</span><span class="pill">🏅 ${G.score}</span><span class="pill combo">🔥 x${G.combo}</span></div><div class="timer"><i id="tm" style="width:${G.t/g.time*100}%"></i></div>
+  <div class="gitem"><div><small>${it[1]}</small>${it[0]}</div></div><div class="cats">${g.cats.map((c,k)=>`<button class="cat" data-k="${k}" style="background:${c[1]}">${c[0]}</button>`).join('')}</div>`);
+  bindBack(()=>go.world(w.id));
+  on('.cat',el=>{const k=+el.dataset.k;if(k===it[2]){G.ok++;G.combo++;const p=10*(1+Math.floor(G.combo/3));G.score+=p;floatTxt('+'+p);sfx('ok');vib(20)}else{G.combo=0;sfx('bad');vib(100);el.style.animation='shake .4s';toast(`❌ Era ${g.cats[it[2]][0]}`)}
+   G.i++;if(G.i>=G.items.length)end();else setTimeout(draw,k===it[2]?80:600)});
+  timers.push(setInterval(()=>{G.t-=.2;const tm=document.getElementById('tm');if(tm)tm.style.width=(G.t/g.time*100)+'%';if(G.t<=0)end()},200))};
+ const end=()=>{clearTimers();const acc=G.ok/G.items.length,pass=acc>=.8;const bonus=G.i>=G.items.length?Math.round(G.t)*2:0;G.score+=bonus;addXP(Math.round(G.score/10));gameDone(w,gi,pass,G.score);
+  h(`<div class="result"><div class="bigst">${pass?'⭐':'💪'}</div><h2>${G.ok}/${G.items.length} certas</h2><p>Pontos: <b>${G.score}</b>${bonus?` (bônus de tempo +${bonus})`:''}</p><p>${pass?'Estrela conquistada!':G.i<G.items.length?'O tempo acabou! Mais rápido da próxima vez.':'Precisa de 80% de acerto. Bora de novo?'}</p><button class="btn y" id="ag">Jogar de novo</button><button class="btn ghost" id="bk2">Voltar ao mundo</button></div>`);
+  document.getElementById('ag').onclick=()=>gClassify(w,g,gi);document.getElementById('bk2').onclick=()=>go.world(w.id)};
+ draw()})}
+
+function gOrder(w,g,gi){gIntro(w,g,gi,`Toque nos itens na ordem correta.<br>✅ No máximo 2 erros para ganhar a estrela.`,()=>{
+ let k=0,err=0;const pool=shuffle(g.items.map((t,i)=>({t,i})));
+ const draw=()=>{h(`${topbar('🎮 '+g.title)}<p class="muted">${g.sub} · erros: <b>${err}</b></p><div class="ord">${g.items.slice(0,k).map((t,i)=>`<div class="done">${i+1}. ${t}</div>`).join('')}</div><hr style="border-color:#ffffff18;margin:14px 0"><div class="ord" id="pool">${pool.filter(p=>p.i>=k).map(p=>`<button data-i="${p.i}">${p.t}</button>`).join('')}</div>`);
+  bindBack(()=>go.world(w.id));
+  on('#pool button',el=>{if(+el.dataset.i===k){k++;sfx('ok');vib(20);if(k===g.items.length){const pass=err<=2;addXP(20);gameDone(w,gi,pass,100-err*10);
+   h(`<div class="result"><div class="bigst">${pass?'⭐':'💪'}</div><h2>Ordem completa!</h2><div class="ord" style="text-align:left">${g.items.map((t,i)=>`<div class="done">${i+1}. ${t}</div>`).join('')}</div><p>${err} erro(s). ${pass?'Estrela conquistada!':'Tente com no máximo 2 erros.'}</p><button class="btn y" id="ag">Jogar de novo</button><button class="btn ghost" id="bk2">Voltar</button></div>`);
+   document.getElementById('ag').onclick=()=>gOrder(w,g,gi);document.getElementById('bk2').onclick=()=>go.world(w.id)}else draw()}
+  else{err++;sfx('bad');vib(100);el.style.animation='shake .4s';setTimeout(()=>el.style.animation='',400);app.querySelector('.muted b').textContent=err}})};
+ draw()})}
+
+function gThermo(w,g,gi){let tc=20;const tasks=[['Deixe o painel de Orlando em 41 °F',()=>Math.round(tc*9/5+32)===41],['Coloque o gás em 300 K',()=>tc+273===300],['Ache a temperatura igual em °C e °F',()=>tc===-40],['Chegue ao zero absoluto',()=>tc===-273]];const done=tasks.map(()=>false);
+ h(`${topbar('🌡️ '+g.title)}<div class="sim"><div class="therm">${['°C','°F','K'].map((u,k)=>`<div class="center"><div class="tube"><i class="fl"></i></div><div class="read" id="r${k}"></div></div>`).join('')}</div>
+  <p class="center" style="font-weight:800" id="feel"></p><input type="range" id="sl" min="-273" max="150" value="${tc}"><div class="row"><button class="btn ghost" id="m">−1</button><button class="btn ghost" id="p">+1</button></div>
+  <p class="muted" style="font-size:13px">T<sub>C</sub>/5 = (T<sub>F</sub>−32)/9 · T<sub>K</sub> = T<sub>C</sub> + 273 — as três escalas sobem juntas: a relação entre elas é uma reta!</p></div>
+  <div class="sim"><b class="ttl" style="font-size:18px">🎯 Missões</b><div id="tk"></div></div><div id="fimw"></div>`);
+ bindBack(()=>go.world(w.id));
+ const sl=document.getElementById('sl');
+ const upd=()=>{const tf=tc*9/5+32,tk=tc+273,fill=(tc+273)/423*100;
+  app.querySelectorAll('.fl').forEach(i=>i.style.height=fill+'%');
+  document.getElementById('r0').textContent=tc+' °C';document.getElementById('r1').textContent=(Math.round(tf*10)/10)+' °F';document.getElementById('r2').textContent=tk+' K';
+  document.getElementById('feel').textContent=tc<=-273?'🧊 Zero absoluto: nada vibra!':tc<0?'🥶 Congelante':tc<15?'🧣 Frio pra danar':tc<26?'😎 Confortável':tc<40?'🥵 Calorão':tc<100?'♨️ Quente demais':'💨 Água fervendo!';
+  tasks.forEach((t,i)=>{if(!done[i]&&t[1]()){done[i]=true;sfx('ok');floatTxt('✅ Missão!');addXP(10);vib(40)}});
+  document.getElementById('tk').innerHTML=tasks.map((t,i)=>`<div class="task"><b>${done[i]?'✅':'⬜'}</b>${t[0]}</div>`).join('');
+  const fw=document.getElementById('fimw');if(done.every(Boolean)&&!fw.innerHTML){fw.innerHTML='<button class="btn g" id="fim">Concluir laboratório ⭐</button>';document.getElementById('fim').onclick=()=>{gameDone(w,gi,true,100);go.world(w.id)}}};
+ sl.oninput=()=>{tc=+sl.value;upd()};
+ document.getElementById('m').onclick=()=>{tc=Math.max(-273,tc-1);sl.value=tc;upd()};document.getElementById('p').onclick=()=>{tc=Math.min(150,tc+1);sl.value=tc;upd()};
+ upd();}
+
+function gShower(w,g,gi){let pos=0,U=110;const R0=4.4; // resistência inteira
+ const tasks=[['Deixe a água MORNA',()=>pos===1&&U===110],['Deixe a água QUENTE',()=>pos===2&&U===110],['Ligue em 220 V na posição quente (e veja o estrago 💥)',()=>pos===2&&U===220]];const done=tasks.map(()=>false);
+ const draw=()=>{const R=pos===0?Infinity:pos===1?R0:R0/2;const P=pos===0?0:U*U/R,i=pos===0?0:U/R;
+  tasks.forEach((t,k)=>{if(!done[k]&&t[1]()){done[k]=true;sfx('ok');floatTxt('✅ Missão!');addXP(10)}});
+  const col=pos===0?'#7fd6ff':P>8000?'#ff3d3d':pos===1?'#ffd27a':'#ff7a2f';
+  h(`${topbar('🚿 '+g.title)}<div class="sim"><div class="shower">🚿<div class="drops">${'<i style="background:'+col+'"></i><i style="background:'+col+';animation-delay:.2s"></i><i style="background:'+col+';animation-delay:.4s"></i>'}</div></div>
+  <p class="center read">${pos===0?'❄️ Água fria':P>8000?'💥 QUEIMOU! P = '+Math.round(P)+' W':(pos===1?'🌤️ Morna':'🔥 Quente')+' · '+Math.round(P)+' W'}</p>
+  <p class="center muted">R = ${pos===0?'∞ (circuito aberto)':R.toFixed(1)+' Ω'} · i = ${i.toFixed(0)} A</p>
+  <p><b>Posição da chave</b></p><div class="seg" id="ps">${['A · Fria','B · Morna','C · Quente'].map((t,k)=>`<button data-k="${k}" class="${pos===k?'on':''}">${t}</button>`).join('')}</div>
+  <p><b>Tomada</b></p><div class="seg" id="us">${[110,220].map(v=>`<button data-v="${v}" class="${U===v?'on':''}">${v} V</button>`).join('')}</div>
+  <div class="tip" style="margin-top:12px">Morna usa a resistência <b>inteira</b> (${R0} Ω); quente usa <b>metade</b> (${R0/2} Ω). Com U constante, <b>P = U²/R</b>: menos resistência = mais potência. A resistência <b>não muda</b> ao trocar a tomada!</div></div>
+  <div class="sim"><b class="ttl" style="font-size:18px">🎯 Missões</b>${tasks.map((t,k)=>`<div class="task"><b>${done[k]?'✅':'⬜'}</b>${t[0]}</div>`).join('')}</div>
+  ${done.every(Boolean)?'<button class="btn g" id="fim">Concluir simulador ⭐</button>':''}`);
+  bindBack(()=>go.world(w.id));
+  on('#ps button',el=>{pos=+el.dataset.k;sfx('tap');draw()});on('#us button',el=>{U=+el.dataset.v;sfx('tap');draw()});
+  const f=document.getElementById('fim');if(f)f.onclick=()=>{gameDone(w,gi,true,100);go.world(w.id)}};
+ draw();}
+
+/* ---------- chefão ---------- */
+go.bossIntro=function(){setNav('home');h(`${topbar('👑 Chefão Final')}<div class="lcard center"><div class="em">👑</div><h3>Simulado ENEM</h3><p>15 questões sorteadas de todos os mundos.</p><div class="tip" style="text-align:left">❤️ 3 vidas<br>⏰ 60 s por questão<br>🏆 Vença com 60% de acerto e pelo menos 1 vida</div><button class="btn y" id="go">Enfrentar o chefão!</button></div>`);bindBack(go.home);
+ document.getElementById('go').onclick=()=>runQuiz(shuffle(ALLQ).slice(0,15),{title:'👑 Chefão',boss:1,lives:3,time:60,onEnd:()=>go.home()})};
+
+/* ---------- macetes ---------- */
+go.macetes=function(){setNav('macetes');h(`<div class="top"><h2>🧠 Arsenal de Macetes</h2></div><p class="muted">Toque no card para virar. Tente lembrar antes!</p>
+ <button class="btn y" id="sh" style="margin-bottom:14px">🔀 Embaralhar e testar a memória</button>
+ <div id="fl">${MACETES.map(([a,b])=>`<div class="flip"><div class="in"><div class="fa"><small>Situação</small><b style="font-size:18px">${a}</b></div><div class="fb"><small>Macete</small><b>${b}</b></div></div></div>`).join('')}</div>`);
+ const bind=()=>app.querySelectorAll('.flip').forEach(f=>f.onclick=()=>{f.classList.toggle('on');sfx('tap')});bind();
+ document.getElementById('sh').onclick=()=>{document.getElementById('fl').innerHTML=shuffle(MACETES).map(([a,b])=>`<div class="flip"><div class="in"><div class="fa"><small>Situação</small><b style="font-size:18px">${a}</b></div><div class="fb"><small>Macete</small><b>${b}</b></div></div></div>`).join('');bind()}};
+
+/* ---------- revisão ---------- */
+go.review=function(){setNav('review');const qs=S.review.map(id=>QBYID[id]).filter(Boolean);
+ if(!qs.length){h(`<div class="top"><h2>🎯 Caça aos Erros</h2></div><div class="lcard center"><div class="em">🧹</div><h3>Nada para revisar!</h3><p>Cada questão que você errar aparece aqui. Acerte de novo para tirá-la da lista. Errar e corrigir é o jeito mais rápido de aprender. 🧠</p><button class="btn" id="b">Ir para a jornada</button></div>`);document.getElementById('b').onclick=go.home;return}
+ S.hadErrors=1;save();
+ h(`<div class="top"><h2>🎯 Caça aos Erros</h2></div><div class="lcard"><div class="em">🎯</div><h3>${qs.length} questão(ões) para dominar</h3><p>Acertou → sai da lista. Errou → continua. Zere a lista para ganhar a conquista!</p>${[...new Set(qs.map(q=>q.w))].map(id=>{const w=W.find(x=>x.id===id);return `<span class="chip">${w.e} ${w.name}: ${qs.filter(q=>q.w===id).length}</span>`}).join('')}<button class="btn y" id="go">Caçar erros!</button></div>`);
+ document.getElementById('go').onclick=()=>runQuiz(shuffle(qs),{title:'🎯 Revisão',review:1,onEnd:()=>go.review()})};
+
+/* ---------- perfil ---------- */
+go.profile=function(){setNav('profile');checkBadges();
+ h(`<div class="top"><h2>🏆 Perfil</h2></div><div class="hero"><div class="big">🏆</div><h1>Nível ${level()}</h1><p><b>${title()}</b> · ${S.xp} XP</p><div class="bar"><i style="width:${(S.xp%150)/1.5}%"></i></div></div>
+ <div class="hud" style="margin-bottom:14px"><span class="pill">✅ ${S.answered} respostas</span><span class="pill">🔥 maior combo ${S.maxCombo}</span><span class="pill">📅 ${S.streak.n} dia(s)</span></div>
+ <h3 class="ttl" style="margin:8px 0">Conquistas</h3>${BADGES.map(([e,n,d])=>`<div class="badge ${S.badges[n]?'':'off'}"><div class="e">${e}</div><div><b>${n}</b><div class="muted" style="font-size:13px">${d}</div></div></div>`).join('')}
+ <h3 class="ttl" style="margin:16px 0 8px">Configurações</h3>
+ <button class="btn ghost" id="fr">${S.free?'🔒 Voltar ao modo jornada':'🔓 Modo livre (liberar todos os mundos)'}</button>
+ <button class="btn ghost" id="rs" style="background:#5a1a2a">🗑️ Zerar progresso</button>`);
+ document.getElementById('fr').onclick=()=>{S.free=!S.free;save();toast(S.free?'Todos os mundos liberados!':'Modo jornada ativado');go.profile()};
+ document.getElementById('rs').onclick=()=>{if(confirm('Apagar todo o progresso?')){try{localStorage.removeItem(KEY)}catch(e){}load();save();go.home()}}};
+
+go.home();checkBadges();
+</script>
+</body>
+</html>
