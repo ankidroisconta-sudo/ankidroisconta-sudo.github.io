@@ -1,0 +1,14 @@
+out/video.mp4
+out/stills/
+out/music.wav
+out/stem-*.wav
+out/sheet.png
+out/check.png
+out/render.log
+out/frames/
+out/.segments-*/
+!out/preview-sangramento.mp4
+out/.vo-cache/
+out/voice.json
+out/check*.png
+out/.render.lock
