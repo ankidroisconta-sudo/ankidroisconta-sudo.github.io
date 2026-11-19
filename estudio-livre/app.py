@@ -1,5 +1,6 @@
 """Estúdio Livre: produção local, sem API paga de IA."""
 import copy
+import math
 import io
 import json
 import os
@@ -470,8 +471,107 @@ def enrich(videos, key):
             'published': sn['publishedAt'], 'channel_created': created,
             'channel_videos': int(stat.get('videoCount', 0) or 0),
             'tags': sn.get('tags', [])[:15], 'description': sn.get('description', '')[:400],
+            'lang': (sn.get('defaultAudioLanguage') or sn.get('defaultLanguage') or '').lower(),
             'url': 'https://www.youtube.com/watch?v=' + v['id']})
     return out
+
+STOPWORDS = set("""a an the of and or in on to for with from by at is are was were be how why what when who which this that these those
+your you my our its it as vs not never ever just only most more very can do does did will would should could i we they he she them
+o a os as um uma de do da dos das e ou em no na nos nas para por com sem que como porque quando quem qual isso essa esse este esta
+seu sua meu minha nunca mais muito pode é foi ser shorts short facts fact video""".split())
+
+def plainword(text):
+    import unicodedata
+    return ''.join(c for c in unicodedata.normalize('NFD', text.lower()) if unicodedata.category(c) != 'Mn')
+
+def topic_terms(title, limit=5):
+    """Palavras-chave do título: sem hashtags, emojis e palavras vazias."""
+    clean = re.sub(r'#\S+|@\S+|\(.*?\)|\[.*?\]', ' ', title)
+    words = [w for w in re.findall(r"[^\W\d_][\w'-]*|\d+", clean.lower()) if w not in STOPWORDS and len(w) > 1]
+    return ' '.join(list(dict.fromkeys(words))[:limit])
+
+TRANSLATIONS = {}
+
+def to_portuguese(text):
+    """Tradução gratuita (MyMemory, sem chave) só das palavras-chave do tema."""
+    if not text: return text
+    if text in TRANSLATIONS: return TRANSLATIONS[text]
+    try:
+        r = requests.get('https://api.mymemory.translated.net/get', params={'q': text[:200], 'langpair': 'en|pt-BR'}, timeout=12)
+        out = r.json()['responseData']['translatedText'] if r.ok else ''
+        if not out or 'MYMEMORY WARNING' in out.upper(): return ''
+    except (requests.RequestException, ValueError, KeyError, TypeError):
+        return ''
+    TRANSLATIONS[text] = out
+    return out
+
+COMPETITION_CACHE = {}
+
+def competition(query, region, language, key):
+    """Mede quantos vídeos fortes já existem sobre o tema nesse mercado (últimos 12 meses)."""
+    cache_key = (query.lower(), region, language)
+    hit = COMPETITION_CACHE.get(cache_key)
+    if hit and time.time() - hit['at'] < 24 * 3600: return hit['data']
+    after = (datetime.now(timezone.utc) - timedelta(days=365)).strftime('%Y-%m-%dT%H:%M:%SZ')
+    try:
+        response = requests.get('https://www.googleapis.com/youtube/v3/search', headers={'X-Goog-Api-Key': key}, timeout=35,
+            params={'part': 'id', 'type': 'video', 'q': query, 'maxResults': 20, 'order': 'relevance',
+                    'regionCode': region, 'relevanceLanguage': language, 'publishedAfter': after})
+    except requests.RequestException:
+        raise ValueError('Falha de conexão com o YouTube.') from None
+    if not response.ok: youtube('search', {'q': query}, key)  # reaproveita a mensagem de erro detalhada
+    body = response.json()
+    total = int(body.get('pageInfo', {}).get('totalResults', 0))
+    ids = ','.join(x['id']['videoId'] for x in body.get('items', []) if x.get('id', {}).get('videoId'))
+    top = enrich(youtube('videos', {'part': 'snippet,statistics,contentDetails', 'id': ids}, key), key) if ids else []
+    terms = [plainword(w)[:5] for w in query.split() if len(w) > 2]
+    need = max(1, -(-len(terms) // 2))
+    def on_topic(v):
+        text = plainword(v['title'] + ' ' + ' '.join(v.get('tags', [])))
+        return sum(t in text for t in terms) >= need
+    def same_language(v):
+        if language != 'pt': return True
+        if v.get('lang'): return v['lang'].startswith('pt')
+        return bool(re.search(r'[ãõçáéíóúâêô]|\b(de|do|da|que|como|por|para|não|você)\b', v['title'].lower()))
+    top = [v for v in top if on_topic(v) and same_language(v)]
+    strong = [v for v in top if v['views'] >= 50000 and (v['subscribers'] or 0) >= 50000]
+    heavy = [v for v in top if v['views'] >= 200000]
+    saturation = len(top) / 20  # quantos dos 20 primeiros resultados são mesmo sobre o tema
+    score = round(100 * min(1.0, 0.45 * len(strong) / 6 + 0.35 * len(heavy) / 6 + 0.2 * saturation))
+    if any(v['views'] >= 1_000_000 for v in top): score = max(score, 40)  # já existe um sucesso grande no Brasil
+    level = 'Baixa' if score < 35 else 'Média' if score < 65 else 'Alta'
+    data = {'query': query, 'region': region, 'score': score, 'level': level, 'total': total, 'related': len(top), 'strong': len(strong), 'heavy': len(heavy),
+            'top': [{'title': v['title'], 'channel': v['channel'], 'views': v['views'], 'subscribers': v['subscribers'], 'url': v['url']}
+                    for v in sorted(top, key=lambda v: v['views'], reverse=True)[:5]]}
+    COMPETITION_CACHE[cache_key] = {'at': time.time(), 'data': data}
+    return data
+
+@app.post('/api/competition')
+def competition_check():
+    d = request.get_json()
+    key = str(d.get('key', '')).strip() or stored_youtube_key() or os.environ.get('YOUTUBE_API_KEY', '')
+    if not key: raise ValueError('Configure a chave do YouTube.')
+    region = str(d.get('region', 'BR'))[:2].upper()
+    if not re.fullmatch('[A-Z]{2}', region): region = 'BR'
+    query = str(d.get('query') or '').strip()[:120]
+    translated = False
+    if not query:
+        title = re.sub(r'#\S+|[^\w\s\'?!.,:-]', ' ', str(d.get('title', ''))).strip()
+        if region == 'BR' and d.get('translate'):
+            pt = to_portuguese(title)
+            if not pt:
+                return jsonify(needs_term=True, query=topic_terms(title, 4),
+                               message='Tradutor gratuito indisponível agora. Digite o tema em português e toque em Checar.')
+            translated = plainword(pt) != plainword(title)
+            title = pt
+        query = topic_terms(title, 4)
+    if not query: raise ValueError('Tema vazio.')
+    data = dict(competition(query, region, 'pt' if region in ('BR', 'PT') else str(d.get('language', 'en'))[:5], key), translated=translated)
+    viral = float(d.get('viral') or 0)
+    if viral:
+        # Oportunidade: quanto viralizou (multiplicador) x quanto falta concorrência.
+        data['opportunity'] = min(100, round(min(100, 25 * math.log10(viral + 1)) * (1 - data['score'] / 100) / 0.75))
+    return jsonify(data)
 
 @app.post('/api/research')
 def research():

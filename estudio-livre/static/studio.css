@@ -9,3 +9,5 @@ main{max-width:1720px;margin:auto;padding:26px clamp(16px,3vw,54px) 75px}h1,h2,h
 .danger{color:#ff8d8d}.item.failed p{color:#ff9b9b;white-space:pre-wrap;word-break:break-word}.item .row{margin-top:6px}
 .banks{margin:10px 0 4px;border:1px solid var(--line);border-radius:10px;padding:10px 14px}.banks summary{cursor:pointer;font-weight:600}
 .preview{position:relative}.preview em{position:absolute;right:6px;bottom:6px;background:#000c;color:#fff;font-style:normal;font-size:11px;font-weight:700;padding:1px 6px;border-radius:5px}#inspirationInfo{border-left:3px solid var(--text);padding:6px 10px;color:var(--text)}
+.comp{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:7px 0 0;font-size:12px}.comp small{font-size:11px;width:100%}.comp button{font-size:11px;padding:3px 9px;border-radius:12px}.lvl{font-weight:700;padding:2px 8px;border-radius:10px;font-size:11px}.lvl.low{background:#1f7a3a;color:#eaffef}.lvl.mid{background:#8a6a10;color:#fff7dc}.lvl.high{background:#8a1f1f;color:#ffeaea}.checkAll{grid-column:1/-1;justify-self:start;font-size:12px;border-radius:20px}
+.comp .term{flex:1;min-width:120px;font-size:12px;padding:4px 8px;border-radius:10px}

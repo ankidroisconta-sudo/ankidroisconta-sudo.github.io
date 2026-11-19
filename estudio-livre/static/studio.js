@@ -226,16 +226,47 @@ function useAsModel(r){
   $('inspirationInfo').textContent='Modelo: “'+r.title+'” · '+clock(r.seconds)+(r.short?' · Shorts':'')+' · '+number.format(r.per_day)+' views/dia.'+(inspiration.foreign?' Vídeo da gringa: o roteiro vai ADAPTAR o tema para o Brasil.':'')+' O roteiro será ORIGINAL sobre o mesmo tema. Clique em Preparar prompt.';
   page('editor');window.scrollTo(0,0);
 }
+let lastList=[];
+function termBox(card,r,value,label){
+  const box=card.querySelector('.comp');box.innerHTML='';
+  const input=document.createElement('input');input.value=value||'';input.placeholder='tema em português';input.className='term';
+  const btn=document.createElement('button');btn.textContent=label||'Checar';
+  btn.onclick=action(async()=>{const c=await api('/api/competition',{query:input.value,key:$('key').value,region:'BR',viral:r.score||0});r.comp=c;r.opportunity=c.opportunity;paintCompetition(card,c,r);});
+  box.append(input,btn);return box;
+}
+function paintCompetition(card,c,r){
+  if(c.needs_term){const box=termBox(card,r,'');const m=document.createElement('small');m.textContent=c.message+' (em inglês: '+c.query+')';box.append(m);return;}
+  const box=r?termBox(card,r,c.query,'Refazer'):card.querySelector('.comp');if(!r)box.innerHTML='';
+  const tone=c.level==='Baixa'?'low':c.level==='Média'?'mid':'high';
+  const tag=document.createElement('span');tag.className='lvl '+tone;tag.textContent='Concorrência '+c.level;
+  const info=document.createElement('small');
+  info.textContent='No Brasil: '+c.related+' vídeo(s) sobre o tema, '+c.strong+' forte(s)'+(c.opportunity!=null?' · Oportunidade '+c.opportunity+'/100':'');
+  info.title=(c.top||[]).map(v=>v.title+' — '+v.channel+' ('+number.format(v.views)+' views)').join('\n');
+  box.prepend(tag);box.append(info);
+}
+async function checkCompetition(r,card){
+  const c=await api('/api/competition',{title:r.title,key:$('key').value,region:'BR',translate:true,viral:r.score||0});
+  r.comp=c;r.opportunity=c.opportunity;paintCompetition(card,c,r);
+  try{localStorage.setItem('studio.last',JSON.stringify({list:lastList,query:$('query').value,mode:$('mode').value,days:$('days').value,lang:$('lang').value}));}catch{}
+}
+async function checkTop(n){
+  const cards=[...document.querySelectorAll('#results .video-card')].slice(0,n);
+  for(const card of cards){const r=lastList[+card.dataset.idx];if(r&&!r.comp){try{await checkCompetition(r,card);}catch(e){notify(e.message);break;}}}
+  if($('sort').value==='opportunity'){lastList.sort((a,b)=>(b.opportunity??-1)-(a.opportunity??-1));showResults(lastList,$('query').value);}
+}
 function showResults(list,query,cached){
+  lastList=list;
   const grid=$('results');
   grid.replaceChildren();
   $('count').textContent=(query||'Em alta')+' · '+list.length+' resultados'+(cached?' · da memória (sem gastar cota)':'');
+  if(list.length){const b=document.createElement('button');b.className='checkAll';b.textContent='Checar concorrência no Brasil dos 8 primeiros (≈ 8% da cota do dia)';b.onclick=action(()=>checkTop(8));grid.append(b);}
   if(!list.length)grid.textContent='Nenhum vídeo encontrado para este período.';
   for(const r of list){
     const card=document.createElement('article');
     card.className='video-card';
-    const ratio=r.score==null?'—':r.score.toLocaleString('pt-BR')+'×';
-    card.innerHTML='<div class="metrics"><b title="Visualizações por dia">'+safe(number.format(r.per_day??0))+'/dia</b><span title="Views ÷ inscritos">'+safe(ratio)+'</span><span>'+safe(number.format(r.views))+' views</span><span>'+safe(r.subscribers==null?'—':number.format(r.subscribers))+' inscr.</span></div><a class="preview" target="_blank" rel="noreferrer"><img loading="lazy" alt=""><em></em></a><h3></h3><small></small><button>Criar vídeo original neste tema</button>';
+    const ratio=r.score==null?'—':Math.round(r.score).toLocaleString('pt-BR')+'×';
+    card.dataset.idx=list.indexOf(r);
+    card.innerHTML='<div class="metrics"><b title="Visualizações por dia">'+safe(number.format(r.per_day??0))+'/dia</b><span title="Views ÷ inscritos">'+safe(ratio)+'</span><span>'+safe(number.format(r.views))+' views</span><span>'+safe(r.subscribers==null?'—':number.format(r.subscribers))+' inscr.</span></div><a class="preview" target="_blank" rel="noreferrer"><img loading="lazy" alt=""><em></em></a><h3></h3><small></small><div class="comp"><span>Concorrência no Brasil: —</span><button class="compBtn">Checar</button></div><button class="make">Criar vídeo original neste tema</button>';
     const link=card.querySelector('a');
     link.href='https://www.youtube.com/watch?v='+encodeURIComponent(r.id);
     link.setAttribute('aria-label','Assistir a '+r.title);
@@ -243,7 +274,9 @@ function showResults(list,query,cached){
     card.querySelector('em').textContent=(r.short?'SHORTS · ':'')+clock(r.seconds);
     card.querySelector('h3').textContent=r.title;
     card.querySelector('small').textContent=r.channel+' · '+new Date(r.published).toLocaleDateString('pt-BR')+(r.engagement?' · '+r.engagement+'% engaj.':'');
-    card.querySelector('button').onclick=()=>useAsModel(r);
+    card.querySelector('.make').onclick=()=>useAsModel(r);
+    card.querySelector('.compBtn').onclick=action(()=>checkCompetition(r,card));
+    if(r.comp)paintCompetition(card,r.comp,r);
     grid.append(card);
   }
 }
