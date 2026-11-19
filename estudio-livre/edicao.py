@@ -103,29 +103,38 @@ def video_shot(src, size, seconds, seed, out):
         '-vf', vf, '-an', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '18', out])
 
 
-def join(files, visible, folder, name, last_extended):
-    """Une planos com dissolve. Cada arquivo, menos o último, tem FADE a mais."""
-    if len(files) == 1:
-        return files[0]
+def join(files, visible, folder, name, last_extended, final=None):
+    """Une planos com dissolve. Cada arquivo, menos o último, tem FADE a mais.
+    final = (filtro_extra, audio, duracao): no último passo já aplica legenda e trilha
+    e grava o video.mp4 numa codificação só (antes eram duas)."""
     if len(files) > 24:  # em grupos, para não abrir dezenas de vídeos ao mesmo tempo
         groups, gvis = [], []
         for g in range(0, len(files), 24):
             part_last = g + 24 < len(files) or last_extended
             groups.append(join(files[g:g + 24], visible[g:g + 24], folder, f'{name}-g{g // 24}', part_last))
             gvis.append(sum(visible[g:g + 24]))
-        return join(groups, gvis, folder, name, last_extended)
+        return join(groups, gvis, folder, name, last_extended, final)
     inputs, chain, label, offset = [], [], '0:v', 0.0
-    for i, f in enumerate(files):
+    for f in files:
         inputs += ['-i', Path(f).name]
     for k in range(1, len(files)):
         offset += visible[k - 1]
         nxt = f'v{k}'
         chain.append(f'[{label}][{k}:v]xfade=transition=fade:duration={FADE}:offset={offset:.3f}[{nxt}]')
         label = nxt
-    out = folder / f'{name}.mp4'
-    ff(['ffmpeg', '-y', '-v', 'error', *inputs, '-filter_complex', ';'.join(chain), '-map', f'[{label}]',
-        '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '18', '-pix_fmt', 'yuv420p', out.name], cwd=folder)
-    return out
+    if final is None:
+        if len(files) == 1:
+            return files[0]
+        out = folder / f'{name}.mp4'
+        ff(['ffmpeg', '-y', '-v', 'error', *inputs, '-filter_complex', ';'.join(chain), '-map', f'[{label}]',
+            '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '18', '-pix_fmt', 'yuv420p', out.name], cwd=folder)
+        return out
+    extra, audio, seconds = final
+    chain.append(f'[{label}]{extra},format=yuv420p[vout]')
+    ff(['ffmpeg', '-y', '-v', 'error', *inputs, '-i', Path(audio).name, '-filter_complex', ';'.join(chain),
+        '-map', '[vout]', '-map', f'{len(files)}:a:0', '-t', f'{seconds:.3f}', '-c:v', 'libx264', '-preset', 'veryfast',
+        '-crf', '19', '-c:a', 'copy', '-movflags', '+faststart', 'video.mp4'], cwd=folder)
+    return folder / 'video.mp4'
 
 
 # ------------------------------------------------------------------ legenda
@@ -367,21 +376,16 @@ def montar(p, t, folder, wavs, durations, size, data_dir, card, progress):
         visible.append(shot['seconds'])
         log.append(dict(plano=n + 1, cena=i + 1, inicio=round(sum(visible[:-1]), 2), fim=round(sum(visible), 2), tipo=kind, **credit))
 
-    progress(86, 'Unindo os planos com transições')
-    timeline = join(files, visible, folder, 'montagem', False)
-
-    progress(90, 'Legendas animadas, trilha e mixagem')
+    progress(86, 'Legendas, trilha e montagem final (uma codificação só)')
     narration = folder / 'narracao.wav'
     narration_track(wavs, lengths, narration)
     effects = motion.effects_track(events, total, folder / 'efeitos.wav') if t.get('effects', 'sim') != 'nao' else None
     audio = soundtrack(narration, total, folder, t.get('music', 'ambiente') != 'nenhuma', effects)
-    vf = 'null'
+    extra = 'null'
     if t.get('captions', 'dinamica') != 'nenhuma':
         captions(p['scenes'], starts, durations, size, t.get('accent', '#b6ef62'), folder / 'legenda.ass')
-        vf = 'ass=legenda.ass'
-    ff(['ffmpeg', '-y', '-v', 'error', '-i', Path(timeline).name, '-i', audio.name, '-map', '0:v:0', '-map', '1:a:0',
-        '-vf', vf, '-t', f'{total:.3f}', '-c:v', 'libx264', '-preset', 'medium', '-crf', '19', '-pix_fmt', 'yuv420p',
-        '-c:a', 'copy', '-movflags', '+faststart', 'video.mp4'], cwd=folder)
+        extra = 'ass=legenda.ass'
+    join(files, visible, folder, 'montagem', False, final=(extra, audio, total))
     if cover is not None and not cover.is_file():
         cover = None
     return starts, total, log, cover
