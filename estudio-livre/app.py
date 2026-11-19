@@ -189,7 +189,7 @@ def sales(tid):
         if data['checkout'] and not t.get('ebook_link'): t['ebook_link'] = data['checkout']
         if not t.get('ebook_name'): t['ebook_name'] = data['ebook_name']
         persist()
-        vendas.build(sales_folder(tid), data, t.get('channel') or t['name'], t.get('accent', '#ffd84d'))
+        vendas.build(sales_folder(tid), data, t.get('channel') or t['name'], t.get('accent', '#ffd84d'), t.get('niche', ''))
     return jsonify(url=f'/canal/{tid}/pagina/')
 
 @app.post('/api/templates/<tid>/sales-cover')
@@ -200,7 +200,7 @@ def sales_cover(tid):
         folder = sales_folder(tid); folder.mkdir(parents=True, exist_ok=True)
         picture = ImageOps.exif_transpose(Image.open(request.files['file'].stream)).convert('RGB')
         picture.thumbnail((1400, 1800)); picture.save(folder / 'capa-enviada.jpg', quality=92)
-        vendas.build(folder, t['sales'], t.get('channel') or t['name'], t.get('accent', '#ffd84d'))
+        vendas.build(folder, t['sales'], t.get('channel') or t['name'], t.get('accent', '#ffd84d'), t.get('niche', ''))
     return jsonify(ok=True)
 
 @app.get('/canal/<tid>/pagina/')

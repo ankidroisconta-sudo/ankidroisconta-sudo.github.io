@@ -34,7 +34,11 @@ def relevant(title, query):
 def tagged(tags, query):
     """Pixabay devolve resultados soltos; exige que alguma palavra da busca esteja nas etiquetas."""
     tags = tags.lower()
-    return any(w[:5] in tags for w in words(query))
+    wanted = words(query)
+    if not wanted:
+        return True
+    need = len(wanted) if len(wanted) <= 2 else -(-len(wanted) * 3 // 5)
+    return sum(w[:5] in tags for w in wanted) >= need
 
 
 def secret(name):
