@@ -1,3 +1,11 @@
+// Armazenamento do navegador opcional: alguns navegadores/extensões bloqueiam e isso não pode travar o estúdio.
+const store={get(k){try{return localStorage.getItem(k);}catch{return null;}},set(k,v){try{localStorage.setItem(k,v);}catch{}},del(k){try{localStorage.removeItem(k);}catch{}}};
+function reportError(msg){
+  try{fetch('/api/client-error?m='+encodeURIComponent(String(msg).slice(0,500)));}catch{}
+  const box=document.getElementById('notice');if(box){box.textContent='Erro na página: '+msg;box.hidden=false;box.style.background='#b42318';box.style.color='#fff';}
+}
+window.addEventListener('error',e=>reportError((e.message||'erro')+' @'+(e.lineno||'?')));
+window.addEventListener('unhandledrejection',e=>reportError(e.reason?.message||String(e.reason)));
 const $ = id => document.getElementById(id);
 const token = document.querySelector('meta[name=studio-token]').content;
 const safe = value => String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
@@ -247,7 +255,7 @@ function paintCompetition(card,c,r){
 async function checkCompetition(r,card){
   const c=await api('/api/competition',{title:r.title,key:$('key').value,region:'BR',translate:true,viral:r.score||0});
   r.comp=c;r.opportunity=c.opportunity;paintCompetition(card,c,r);
-  try{localStorage.setItem('studio.last',JSON.stringify({list:lastList,query:$('query').value,mode:$('mode').value,days:$('days').value,lang:$('lang').value}));}catch{}
+  try{store.set('studio.last',JSON.stringify({list:lastList,query:$('query').value,mode:$('mode').value,days:$('days').value,lang:$('lang').value}));}catch{}
 }
 function paintPotential(card,p){
   const box=card.querySelector('.pot');box.innerHTML='';
@@ -301,7 +309,7 @@ function showResults(list,query,cached){
 }
 $('mode').addEventListener('change',()=>{$('query').placeholder=$('mode').value.startsWith('gringa')?'Digite em inglês (ex.: airplane facts, history mysteries)…':'Caçar ideias sobre um nicho…';});
 $('hunt').onsubmit=action(async e=>{
-  e.preventDefault();
+  e?.preventDefault?.();
   const query=$('query').value.trim();
   if(($('mode').value!=='trending'&&!query)){notify('Digite um nicho ou escolha “Em alta no país”.');return;}
   if(!$('days').reportValidity())return;
@@ -318,17 +326,17 @@ $('hunt').onsubmit=action(async e=>{
     const list=r.results;
     showResults(list,query,r.cached);
     if(r.niche)$('count').textContent+=' · '+r.niche.level+': '+r.niche.channels_winning+' canais diferentes acertando ('+r.niche.small_channels_winning+' pequenos)';
-    try{localStorage.setItem('studio.last',JSON.stringify({list,query,mode:$('mode').value,days:$('days').value,lang:$('lang').value}));}catch{}
+    try{store.set('studio.last',JSON.stringify({list,query,mode:$('mode').value,days:$('days').value,lang:$('lang').value}));}catch{}
   }finally{$('search').disabled=false;$('search').textContent='Caçar';}
 });
 bind('filter',()=>{$('filters').hidden=!$('filters').hidden;$('filter').setAttribute('aria-expanded',String(!$('filters').hidden));});
 bind('theme',()=>{
   const next=document.documentElement.dataset.theme==='light'?'dark':'light';
-  document.documentElement.dataset.theme=next;localStorage.setItem('studio.theme',next);
+  document.documentElement.dataset.theme=next;store.set('studio.theme',next);
 });
-document.documentElement.dataset.theme=localStorage.getItem('studio.theme')||'dark';
-$('notes').value=localStorage.getItem('studio.notes')||'';
-$('notes').oninput=()=>{localStorage.setItem('studio.notes',$('notes').value);$('noteStatus').textContent='Anotações salvas';};
+document.documentElement.dataset.theme=store.get('studio.theme')||'dark';
+$('notes').value=store.get('studio.notes')||'';
+$('notes').oninput=()=>{store.set('studio.notes',$('notes').value);$('noteStatus').textContent='Anotações salvas';};
 function showMoldCards(){
   const box=$('moldCards');box.replaceChildren();
   for(const t of state.templates){
@@ -345,9 +353,9 @@ async function init(){
   page('research');await refresh();
   if(!state.projects.length)notify('Dica: em Roteiro, clique em “Experimentar com exemplo” e depois em “Salvar roteiro”.');
   try{
-    const cached=JSON.parse(localStorage.getItem('studio.last'));
+    const cached=JSON.parse(store.get('studio.last'));
     if(cached){$('query').value=cached.query;$('mode').value=cached.mode;$('days').value=cached.days;$('lang').value=cached.lang;showResults(cached.list,cached.query);}
-  }catch{localStorage.removeItem('studio.last');}
+  }catch{store.del('studio.last');}
   const system=await api('/api/system');for(const v of system.voices)$('voice').add(new Option(v.name+' · '+v.culture,v.name));
   showKeys();templateForm();$('engine').textContent=(system.ffmpeg?'Renderização local disponível.':'FFmpeg ausente. Feche e abra Iniciar.cmd para instalar.')+' Dados em: '+system.data;
   setInterval(async()=>{if(!state?.jobs?.some(j=>['queued','running'].includes(j.status)))return;try{const data=await api('/api/state');state.jobs=data.jobs;showJobs();}catch(e){notify(e.message);}},2500);

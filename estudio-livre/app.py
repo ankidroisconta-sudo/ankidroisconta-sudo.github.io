@@ -102,6 +102,18 @@ def error(exc):
 def index():
     return render_template('index.html', token=TOKEN)
 
+@app.get('/api/client-error')
+def client_error():
+    # Erros de JavaScript do navegador aparecem na janela preta, para diagnóstico.
+    print('ERRO NA PÁGINA:', request.args.get('m', '')[:500], '|', request.headers.get('User-Agent', '')[:120], flush=True)
+    return jsonify(ok=True)
+
+@app.after_request
+def no_cache(response):
+    if request.path.startswith('/static/') or request.path == '/':
+        response.headers['Cache-Control'] = 'no-store'
+    return response
+
 @app.get('/api/state')
 def get_state():
     with LOCK:
