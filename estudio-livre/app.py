@@ -1458,10 +1458,33 @@ def oauth_callback():
     client = piloto.client_info(KEY_DIR / 'oauth_client.json')
     data = piloto.exchange_code(client, request.args.get('code', ''), f'http://{request.host}/oauth/callback')
     save_secret(f'yt-{tid}', data['refresh_token'])
-    channel = piloto.my_channel(data['access_token'])
+    channel = None
+    for attempt in range(3):  # canal recém-criado às vezes demora alguns segundos para aparecer
+        try:
+            channel = piloto.my_channel(data['access_token']); break
+        except Exception:
+            time.sleep(3)
+    if channel:
+        with LOCK:
+            find('templates', tid)['youtube_channel'] = channel; persist()
+        title = html_unescape(channel['title'])
+        return f'<meta charset="utf-8"><body style="font-family:sans-serif;padding:40px"><h2>Canal conectado: {title}</h2><p>Pode fechar esta aba e voltar ao Estúdio Livre.</p></body>'
+    return '<meta charset="utf-8"><body style="font-family:sans-serif;padding:40px"><h2>Permissão salva</h2><p>O YouTube ainda não mostrou o canal. Volte ao estúdio: ele confere de novo sozinho em alguns segundos.</p></body>'
+
+def ensure_channel(t):
+    """Se a permissão existe mas o canal não foi registrado, busca o canal agora."""
+    if t.get('youtube_channel'): return t['youtube_channel']
+    token = youtube_token(t['id'])
+    if not token: return None
+    channel = piloto.my_channel(token)
     with LOCK:
-        find('templates', tid)['youtube_channel'] = channel; persist()
-    return f'<meta charset="utf-8"><body style="font-family:sans-serif;padding:40px"><h2>Canal conectado: {channel["title"]}</h2><p>Pode fechar esta aba e voltar ao Estúdio Livre.</p></body>'
+        find('templates', t['id'])['youtube_channel'] = channel; persist()
+    return channel
+
+@app.post('/api/templates/<tid>/youtube/check')
+def youtube_check(tid):
+    with LOCK: t = copy.deepcopy(find('templates', tid))
+    return jsonify(channel=ensure_channel(t))
 
 @app.post('/api/jobs/<jid>/upload')
 def upload_route(jid):
@@ -1477,7 +1500,8 @@ def branding_route(tid):
     if not token: raise ValueError('Conecte este canal ao YouTube primeiro.')
     folder = brand_folder(tid)
     if not (folder / 'banner.jpg').is_file(): build_brand(t)
-    piloto.apply_branding(token, t['youtube_channel']['id'], folder / 'banner.jpg', t.get('about', ''), t.get('niche', ''))
+    channel = ensure_channel(t)
+    piloto.apply_branding(token, channel['id'], folder / 'banner.jpg', t.get('about', ''), t.get('niche', ''))
     return jsonify(ok=True)
 
 @app.get('/files/<jid>/<name>')

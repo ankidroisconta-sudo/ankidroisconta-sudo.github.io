@@ -94,10 +94,13 @@ async function connectYouTube(t){
   const r=await api('/api/templates/'+t.id+'/youtube/connect',{});window.open(r.url,'_blank');
   notify('Na aba do Google: escolha o canal “'+t.name+'” e clique em Permitir.');
   const until=Date.now()+300000;const tick=setInterval(async()=>{await refresh();const nt=state.templates.find(x=>x.id===t.id);
+    if(!nt?.youtube_channel){try{await api('/api/templates/'+t.id+'/youtube/check',{});}catch{}}
     if(nt?.youtube_channel||Date.now()>until){clearInterval(tick);if(nt?.youtube_channel)notify('Canal conectado: '+nt.youtube_channel.title);}},4000);
 }
+const checkedYT=new Set();
 function showBrand(t){
   const box=$('brandBox');box.replaceChildren();
+  if(!t.youtube_channel&&!checkedYT.has(t.id)){checkedYT.add(t.id);api('/api/templates/'+t.id+'/youtube/check',{}).then(r=>{if(r.channel)refresh();}).catch(()=>{});}
   const cta=document.createElement('div');cta.className='yt-cta';
   if(t.youtube_channel){cta.innerHTML='<span>✅ Conectado ao YouTube: <b>'+safe(t.youtube_channel.title)+'</b></span>';}
   else{cta.innerHTML='<span>Este canal ainda não está ligado ao YouTube.</span><button class="primary">Conectar ao YouTube</button>';cta.querySelector('button').onclick=action(()=>connectYouTube(t));}
