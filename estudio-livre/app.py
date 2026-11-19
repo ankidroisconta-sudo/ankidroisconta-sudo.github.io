@@ -13,6 +13,7 @@ import time
 import uuid
 import wave
 import zipfile
+import edicao
 import modelagem as model
 from midia import illustrate, load_font, narrate
 from datetime import datetime, timedelta, timezone
@@ -36,7 +37,8 @@ app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024
 DEFAULT_TEMPLATE = {'id': 'documental', 'name': 'Documental claro', 'channel': 'Meu canal',
     'niche': 'Curiosidades e conhecimento', 'language': 'Português brasileiro',
     'instructions': 'Tom curioso, explicações claras e fatos verificáveis. Gancho inicial curto. Conclusão útil. Evitar promessas e repetição.',
-    'minutes': 2, 'format': 'horizontal', 'resolution': 720, 'voice': '', 'accent': '#b6ef62'}
+    'minutes': 2, 'format': 'horizontal', 'resolution': 1080, 'voice': '', 'accent': '#ffd84d',
+    'captions': 'dinamica', 'music': 'ambiente'}
 def load_state():
     fresh = {'templates': [copy.deepcopy(DEFAULT_TEMPLATE)], 'projects': [], 'jobs': []}
     if not STATE.exists(): return fresh
@@ -118,7 +120,9 @@ def clean_template(d):
     result['format'] = 'vertical' if d.get('format') == 'vertical' else 'horizontal'
     result['resolution'] = 1080 if int(d.get('resolution', 720)) == 1080 else 720
     result['minutes'] = max(0.2, min(60, float(d.get('minutes', 2))))
-    result['accent'] = d.get('accent', '#b6ef62')
+    result['captions'] = 'nenhuma' if d.get('captions') == 'nenhuma' else 'dinamica'
+    result['music'] = 'nenhuma' if d.get('music') == 'nenhuma' else 'ambiente'
+    result['accent'] = d.get('accent', '#ffd84d')
     if not re.fullmatch(r'#[0-9a-fA-F]{6}', result['accent']): raise ValueError('Cor inválida.')
     return result
 
@@ -145,7 +149,7 @@ def clean_project(d, template_id):
         text = str(s.get('text', '')).strip()
         if not text or len(text) > 6000: raise ValueError('Cada cena precisa de texto com até 6.000 caracteres.')
         out.append({'text': text, 'caption': str(s.get('caption', ''))[:180],
-                    'visual': str(s.get('visual', ''))[:2000], 'media': s.get('media') if s.get('media') in ('imagem','video') else 'auto', 'image': '', 'audio': '', 'video': ''})
+                    'visual': str(s.get('visual', ''))[:2000], 'media': s.get('media') if s.get('media') in ('imagem','video','animacao') else 'auto', 'image': '', 'audio': '', 'video': ''})
     tags = d.get('tags', [])
     if isinstance(tags, str): tags = [s.strip() for s in tags.split(',') if s.strip()]
     return {'id': ident(), 'title': str(d.get('title', 'Vídeo sem título'))[:200],
@@ -256,7 +260,7 @@ def prompt():
     with LOCK: t = copy.deepcopy(find('templates', d['template_id']))
     example = {'title': 'Título original', 'description': 'Descrição e fontes verificadas', 'tags': ['tema'],
                'thumbnail_text': 'Até seis palavras', 'scenes': [{'text': 'Narração completa desta cena.',
-               'caption': 'Frase curta na tela', 'visual': 'Descrição de uma imagem para criar ou procurar'}]}
+               'caption': 'Frase curta na tela', 'visual': 'city skyline at night, people walking street, aerial traffic'}]}
     guide='Divida a narração em cenas de 15 a 35 segundos.'
     if d.get('reference'):
         _,profile=reference_profile(d['reference'])
@@ -267,7 +271,7 @@ Duração pretendida: {t['minutes']} minutos, aproximadamente {round(t['minutes'
 Orientações editoriais: {t['instructions']}
 {guide} Não copie falas ou thumbnails de referências.
 Não invente fatos, métricas ou fontes. Indique na descrição os fatos que ainda precisam de checagem.
-Para cada cena escreva text (narração), caption (até 100 caracteres) e visual (2 a 5 palavras-chave concretas em inglês para buscar um clipe ou uma imagem. Inclua media com valor video ou imagem; prefira video para ações e imagem para diagramas ou documentos).
+Para cada cena escreva text (narração), caption (até 100 caracteres) e visual: 2 a 4 buscas curtas EM INGLÊS separadas por vírgula, cada uma descrevendo uma tomada diferente e concreta que existiria em banco de vídeos (ex.: 'chef cutting vegetables, steam rising from pan, close up spices'). Evite nomes próprios e conceitos abstratos no visual. Inclua media com valor video, imagem ou animacao (animacao = tipografia animada gerada por código, ideal para números, listas e conceitos abstratos; nesse caso coloque o número ou a ideia-chave no caption). Prefira video.
 Retorne SOMENTE um objeto JSON válido neste formato, sem markdown:
 {json.dumps(example, ensure_ascii=False)}''')
 
@@ -282,7 +286,13 @@ def youtube(endpoint, params, key):
         raise ValueError('YouTube recusou a consulta. Verifique a chave, a API ativada, as restrições e a cota no Google Cloud.')
     return response.json().get('items', [])
 
-KEY_PATH = Path(os.environ.get('LOCALAPPDATA', DATA)) / 'EstudioLivre' / 'youtube.dpapi'
+KEY_DIR = Path(os.environ.get('LOCALAPPDATA', DATA)) / 'EstudioLivre'
+KEY_PATH = KEY_DIR / 'youtube.dpapi'
+KEY_NAMES = ('youtube', 'pexels', 'pixabay')
+
+def read_key(name):
+    path = KEY_DIR / f'{name}.dpapi'
+    return windows_secret(path.read_text('ascii'), decrypt=True) if WINDOWS and path.is_file() else ''
 
 def windows_secret(value, decrypt=False):
     if not WINDOWS: raise ValueError('Salvar a chave criptografada só funciona no Windows. Cole a chave no campo a cada pesquisa.')
@@ -302,17 +312,25 @@ def windows_secret(value, decrypt=False):
 def stored_youtube_key():
     return windows_secret(KEY_PATH.read_text('ascii'), decrypt=True) if KEY_PATH.is_file() else ''
 
+@app.get('/api/keys')
+def list_keys():
+    return jsonify({n: bool(os.environ.get(n.upper() + '_API_KEY') or (KEY_DIR / f'{n}.dpapi').is_file()) for n in KEY_NAMES})
+
 @app.post('/api/youtube-key')
 def store_youtube_key():
-    value = str(request.get_json().get('key', '')).strip()
+    d = request.get_json()
+    name = d.get('name', 'youtube')
+    if name not in KEY_NAMES: raise ValueError('Serviço desconhecido.')
+    value = str(d.get('key', '')).strip()
     if not 20 <= len(value) <= 256 or not value.isascii() or not value.isprintable():
         raise ValueError('Chave inválida.')
     encrypted = windows_secret(value)
-    KEY_PATH.parent.mkdir(parents=True, exist_ok=True)
+    KEY_DIR.mkdir(parents=True, exist_ok=True)
     with LOCK:
-        temporary = KEY_PATH.with_suffix('.tmp')
+        target = KEY_DIR / f'{name}.dpapi'
+        temporary = target.with_suffix('.tmp')
         temporary.write_text(encrypted, 'ascii')
-        temporary.replace(KEY_PATH)
+        temporary.replace(target)
     return jsonify(ok=True)
 
 @app.post('/api/research')
@@ -423,7 +441,7 @@ def fit_text(draw, text, box_width, max_height, start_size):
         if len(lines) * int(size * 1.3) <= max_height: return lines, ft, int(size * 1.3)
     return lines, ft, int(size * 1.3)
 
-def card(path, scene, title, size, accent, thumbnail=False, auto_picture=None):
+def card(path, scene, title, size, accent, thumbnail=False, auto_picture=None, show_text=True):
     w, h = size
     source = auto_picture or DATA / 'assets' / scene.get('image', '')
     if source.is_file():
@@ -447,6 +465,9 @@ def card(path, scene, title, size, accent, thumbnail=False, auto_picture=None):
     ds = ImageDraw.Draw(shade)
     for y in range(h): ds.line((0, y, w, y), fill=(0, 0, 0, int(205*(y/h)**3)))
     im = Image.alpha_composite(im, shade).convert('RGB')
+    if not show_text:
+        im.save(path, quality=95)
+        return
     dd = ImageDraw.Draw(im)
     margin = int(w*.075)
     text = title if thumbnail else (scene.get('caption') or title)
@@ -491,7 +512,7 @@ def render(jid, p, t):
     if ref:
         progress(jid,0,'Analisando os cortes e o movimento da referência')
         ref_file,profile=reference_profile(ref)
-    durations=[];speakers=[];voice_parts=[]
+    durations=[];speakers=[];voice_parts=[];spoken=[]
     for idx, scene in enumerate(p['scenes']):
         percent = round(idx/len(p['scenes'])*38)
         progress(jid, percent, f'Cena {idx+1}/{len(p["scenes"])} · gerando narração')
@@ -519,9 +540,21 @@ def render(jid, p, t):
         if duration <= 0 or duration > 3600: raise ValueError('Duração de áudio inválida (máximo: 1 hora por cena).')
         standardized=folder/f'fala-{idx:03}.wav'
         run([ffmpeg,'-v','error','-y','-i',str(wav),'-af','loudnorm=I=-16:TP=-1.5:LRA=11','-ar','44100','-ac','1',str(standardized)])
-        voice_parts.append(f"file '{standardized.name}'")
+        voice_parts.append(f"file '{standardized.name}'");spoken.append(standardized)
         durations.append(duration)
     total=sum(durations)
+    if not ref:
+        # Edição dinâmica: vários cortes por cena, movimento, transições, legenda animada e trilha.
+        def fallback_card(path, scene, frame):
+            card(path, scene, p['title'], frame, t['accent'], show_text=t.get('captions') == 'nenhuma')
+        def step(amount, message): progress(jid, amount, message)
+        starts, total, media_log, cover = edicao.montar(p, t, folder, spoken, durations, size, DATA, fallback_card, step)
+        for i, s in enumerate(p['scenes']):
+            srt.append(f'{i+1}\n{timestamp(starts[i])} --> {timestamp(starts[i]+durations[i])}\n{s["text"]}\n')
+        for entry in media_log: entry['voz'] = speakers[entry['cena']-1]
+        profile = dict(largura=size[0], altura=size[1], duracao=total, fps=edicao.FPS,
+                       planos=[dict(inicio=e['inicio'], fim=e['fim'], tipo=e['tipo']) for e in media_log])
+        return finish(jid, p, t, folder, srt, media_log, profile, cover, total)
     if not profile:
         shots=[];cursor=0
         for scene,duration in zip(p['scenes'],durations):
@@ -592,9 +625,11 @@ def render(jid, p, t):
         cover=folder/'capa-base.jpg'
         run([ffmpeg,'-y','-v','error','-i',str(timeline),'-frames:v','1',str(cover)])
     if cover is not None and not Path(cover).is_file(): cover=None  # usa a imagem da cena 1 ou um cartão gráfico
+    return finish(jid, p, t, folder, srt, media_log, profile, cover, target)
+
+def finish(jid, p, t, folder, srt, media_log, profile, cover, offset):
     card(folder/'thumbnail.jpg',p['scenes'][0],p['thumbnail_text'],(1280,720),t['accent'],True,cover)
     (folder/'modelo.json').write_text(json.dumps(profile,indent=2,ensure_ascii=False),'utf8')
-    offset=target
     (folder/'legendas.srt').write_text('\n'.join(srt), 'utf-8')
     (folder/'projeto.json').write_text(json.dumps({'project': p, 'template': t}, ensure_ascii=False, indent=2), 'utf-8')
     (folder/'publicacao.txt').write_text(f"TÍTULO\n{p['title']}\n\nDESCRIÇÃO\n{p['description']}\n\nTAGS\n{', '.join(p['tags'])}\n\nDATA PLANEJADA (não publicada automaticamente)\n{p['scheduled']}\n", 'utf-8')
@@ -618,7 +653,7 @@ TEMPORARY = ('audio-*.wav', 'voz-*.json', 'cena-*.jpg', 'cartao-*.jpg', 'visual-
 
 def cleanup(folder):
     # Keep deliverables, remove generated intermediates only from this job's folder.
-    for pattern in TEMPORARY:
+    for pattern in TEMPORARY + ('midia-*', 'quadro-*.jpg', 'montagem*.mp4', 'narracao.wav', 'trilha.m4a', 'legenda.ass', 'efeitos.wav'):
         for file in folder.glob(pattern):
             try: file.unlink()
             except OSError: pass

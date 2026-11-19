@@ -62,7 +62,7 @@ async function refresh(){
 function templateForm(){
   showMoldCards();
   const t=state.templates.find(t=>t.id===$('editMold').value);
-  for(const input of $('moldForm').elements)if(input.name)input.value=t[input.name] ?? '';
+  for(const input of $('moldForm').elements)if(input.name)input.value=t[input.name] ?? input.options?.[0]?.value ?? '';
 }
 async function saveTemplate(asNew){
   const form=$('moldForm');
@@ -125,7 +125,7 @@ function editor(id){
   p.scenes.forEach((s,i)=>{
     const el=document.createElement('div');el.className='scene';
     el.innerHTML='<strong>Cena '+(i+1)+'</strong>'+field('Narração','text',s.text,true)+field('Texto na tela','caption',s.caption)+field('Referência visual','visual',s.visual)+'<div class="row"><label>Imagem para plano estático '+(s.image?'· anexada':'')+'<input type="file" accept="image/*" data-kind="image"></label><label>Narração automática · substituir '+(s.audio?'· anexado':'')+'<input type="file" accept=".wav,.m4a,.mp3,.ogg" data-kind="audio"></label></div>';
-    const medium=document.createElement('label');medium.innerHTML='Sem referência, usar <select data-key="media"><option value="auto">Escolha automática</option><option value="video">Clipe de vídeo</option><option value="imagem">Imagem</option></select>';medium.querySelector('select').value=s.media||'auto';el.append(medium);
+    const medium=document.createElement('label');medium.innerHTML='Sem referência, usar <select data-key="media"><option value="auto">Escolha automática</option><option value="video">Clipe de vídeo</option><option value="imagem">Imagem</option><option value="animacao">Animação gráfica (texto e números)</option></select>';medium.querySelector('select').value=s.media||'auto';el.append(medium);
     const clip=document.createElement('label');clip.innerHTML='Clipe de vídeo '+(s.video?'· anexado':'· opcional')+'<input type="file" accept="video/*" data-kind="video">';el.append(clip);
     el.querySelectorAll('[type=file]').forEach(input=>input.onchange=action(async()=>{
       if(!input.files.length)return;
@@ -170,6 +170,8 @@ function showJobs(){
     $('jobs').append(el);
   }
 }
+async function showKeys(){try{const k=await api('/api/keys');for(const n of ['pexels','pixabay'])$('k'+n).textContent=k[n]?'· salva':'';}catch{}}
+for(const n of ['pexels','pixabay'])bind('save'+n[0].toUpperCase()+n.slice(1),async()=>{await api('/api/youtube-key',{name:n,key:$(n+'Key').value});$(n+'Key').value='';await showKeys();notify('Chave salva neste Windows.');});
 bind('manual',()=>window.open('https://www.youtube.com/results?search_query='+encodeURIComponent($('query').value),'_blank','noopener'));
 bind('storeKey',async()=>{
   await api('/api/youtube-key',{key:$('key').value});
@@ -235,7 +237,7 @@ async function init(){
     if(cached){$('query').value=cached.query;$('mode').value=cached.mode;$('days').value=cached.days;$('lang').value=cached.lang;showResults(cached.list,cached.query);}
   }catch{localStorage.removeItem('studio.last');}
   const system=await api('/api/system');for(const v of system.voices)$('voice').add(new Option(v.name+' · '+v.culture,v.name));
-  templateForm();$('engine').textContent=(system.ffmpeg?'Renderização local disponível.':'FFmpeg ausente. Feche e abra Iniciar.cmd para instalar.')+' Dados em: '+system.data;
+  showKeys();templateForm();$('engine').textContent=(system.ffmpeg?'Renderização local disponível.':'FFmpeg ausente. Feche e abra Iniciar.cmd para instalar.')+' Dados em: '+system.data;
   setInterval(async()=>{if(!state?.jobs?.some(j=>['queued','running'].includes(j.status)))return;try{const data=await api('/api/state');state.jobs=data.jobs;showJobs();}catch(e){notify(e.message);}},2500);
 }
 init().catch(e=>notify(e.message));

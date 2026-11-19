@@ -6,6 +6,10 @@ COMO USAR (3 PASSOS)
 3. Na primeira vez, o estúdio instala sozinho o Python e o FFmpeg (pelo winget) e os componentes. Aceite as permissões que aparecerem. Se pedir, feche a janela e abra Iniciar.cmd de novo. O navegador abre sozinho.
 
 O que mudou nesta versão:
+- Edição nova: um corte a cada ~3,5 s, zoom e panorâmica nas fotos, transições suaves, correção de cor.
+- Legenda animada palavra por palavra (cor do molde), música ambiente sem direitos autorais que abaixa quando a voz fala, e efeitos sonoros (whoosh e pop).
+- Cenas animadas geradas por código (texto e números contando) quando não há imagem boa, ou quando você escolhe "Animação gráfica" na cena.
+- Busca em vários acervos: Pexels e Pixabay (com chave grátis, em Produção > Bancos de vídeo), Wikimedia, NASA e Internet Archive.
 - Instalação automática de Python e FFmpeg; a voz neural virou opcional (se não instalar, usa a voz do Windows).
 - A produção não para mais quando falta mídia na internet: tenta clipe, depois foto livre e, por último, um cartão gráfico.
 - Clipes curtos repetem até preencher o plano, em vez de dar erro.
