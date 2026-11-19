@@ -307,7 +307,7 @@ function showResults(list,query,cached){
     grid.append(card);
   }
 }
-$('mode').addEventListener('change',()=>{$('query').placeholder=$('mode').value.startsWith('gringa')?'Digite em inglês (ex.: airplane facts, history mysteries)…':'Caçar ideias sobre um nicho…';});
+$('mode').addEventListener('change',()=>{$('query').placeholder=$('mode').value.startsWith('gringa')?'Digite em português ou inglês (ex.: curiosidades de história)…':'Caçar ideias sobre um nicho…';});
 $('hunt').onsubmit=action(async e=>{
   e?.preventDefault?.();
   const query=$('query').value.trim();
@@ -325,6 +325,7 @@ $('hunt').onsubmit=action(async e=>{
     const r=await api('/api/research',{query,key:$('key').value,mode,days:$('days').value,language,region,sort,max_subs:maxSubs,category:$('category').value,channel_months:$('months').value});
     const list=r.results;
     showResults(list,query,r.cached);
+    if(r.query_note)$('count').textContent+=' · '+r.query_note;
     if(r.niche)$('count').textContent+=' · '+r.niche.level+': '+r.niche.channels_winning+' canais diferentes acertando ('+r.niche.small_channels_winning+' pequenos)';
     try{store.set('studio.last',JSON.stringify({list,query,mode:$('mode').value,days:$('days').value,lang:$('lang').value}));}catch{}
   }finally{$('search').disabled=false;$('search').textContent='Caçar';}

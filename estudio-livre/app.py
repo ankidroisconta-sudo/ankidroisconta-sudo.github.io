@@ -492,6 +492,12 @@ your you my our its it as vs not never ever just only most more very can do does
 o a os as um uma de do da dos das e ou em no na nos nas para por com sem que como porque quando quem qual isso essa esse este esta
 seu sua meu minha nunca mais muito pode é foi ser shorts short facts fact video""".split())
 
+PT_HINTS = set('de do da dos das que como por para não nao com sem uma um os as no na nos nas mais muito história historia curiosidades dinheiro saúde saude receitas cachorro gato plantas mistérios misterios'.split())
+
+def looks_portuguese(text):
+    words = set(re.findall(r'\w+', text.lower()))
+    return bool(re.search(r'[ãõçáéíóúâêô]', text.lower())) or len(words & PT_HINTS) >= 1
+
 def plainword(text):
     import unicodedata
     return ''.join(c for c in unicodedata.normalize('NFD', text.lower()) if unicodedata.category(c) != 'Mn')
@@ -505,17 +511,28 @@ def topic_terms(title, limit=5):
 TRANSLATIONS = {}
 
 def to_portuguese(text):
-    """Tradução gratuita (MyMemory, sem chave) só das palavras-chave do tema."""
+    return translate(text, 'en|pt-BR')
+
+def to_english(text):
+    return translate(text, 'pt-BR|en')
+
+def translate(text, pair):
+    """Tradução gratuita (MyMemory, sem chave). Devolve '' se o serviço não responder."""
     if not text: return text
-    if text in TRANSLATIONS: return TRANSLATIONS[text]
+    if (text, pair) in TRANSLATIONS: return TRANSLATIONS[(text, pair)]
     try:
-        r = requests.get('https://api.mymemory.translated.net/get', params={'q': text[:200], 'langpair': 'en|pt-BR'}, timeout=12)
+        r = requests.get('https://api.mymemory.translated.net/get', params={'q': text[:200], 'langpair': pair}, timeout=12)
         out = r.json()['responseData']['translatedText'] if r.ok else ''
         if not out or 'MYMEMORY WARNING' in out.upper(): return ''
     except (requests.RequestException, ValueError, KeyError, TypeError):
         return ''
-    TRANSLATIONS[text] = out
+    out = html_unescape(out)
+    TRANSLATIONS[(text, pair)] = out
     return out
+
+def html_unescape(text):
+    import html
+    return html.unescape(text)
 
 COMPETITION_CACHE = {}
 
@@ -653,6 +670,14 @@ def research():
     query = str(d.get('query', '')).strip()[:200]
     category = str(d.get('category', ''))
     if mode != 'trending' and not query: raise ValueError('Digite um nicho ou assunto.')
+    query_note = ''
+    if query and language.startswith('en') and d.get('translate_query', True) and looks_portuguese(query):
+        english = to_english(query)
+        if english and plainword(english) != plainword(query):
+            query_note = f'buscando em inglês por “{english}”'
+            query = english
+        else:
+            query_note = 'tradutor indisponível agora: digite a busca em inglês para resultados melhores'
     params = dict(mode=mode, region=region, language=language, days=days, query=query, category=category)
 
     def run_query():
@@ -705,7 +730,7 @@ def research():
     small = {r['channel_id'] for r in results if r['score'] and r['score'] >= 3 and r['subscribers'] is not None and r['subscribers'] <= 100000}
     niche = {'channels_winning': len(winners), 'small_channels_winning': len(small),
              'level': 'Nicho forte' if len(winners) >= 8 else 'Nicho médio' if len(winners) >= 4 else 'Nicho fraco'}
-    return jsonify(results=results, cached=cached, niche=niche)
+    return jsonify(results=results, cached=cached, niche=niche, query_used=query, query_note=query_note)
 
 @app.post('/api/queue')
 def enqueue():
