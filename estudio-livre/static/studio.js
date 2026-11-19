@@ -90,8 +90,18 @@ bind('salesBuild',async()=>{
   const r=await api('/api/templates/'+currentChannel().id+'/sales',data);await refresh();notify('Página gerada.');window.open(r.url,'_blank');
 });
 $('salesCover').onchange=action(async e=>{if(!e.target.files.length)return;const f=new FormData();f.append('file',e.target.files[0]);await api('/api/templates/'+currentChannel().id+'/sales-cover',f);notify('Capa atualizada.');});
+async function connectYouTube(t){
+  const r=await api('/api/templates/'+t.id+'/youtube/connect',{});window.open(r.url,'_blank');
+  notify('Na aba do Google: escolha o canal “'+t.name+'” e clique em Permitir.');
+  const until=Date.now()+300000;const tick=setInterval(async()=>{await refresh();const nt=state.templates.find(x=>x.id===t.id);
+    if(nt?.youtube_channel||Date.now()>until){clearInterval(tick);if(nt?.youtube_channel)notify('Canal conectado: '+nt.youtube_channel.title);}},4000);
+}
 function showBrand(t){
   const box=$('brandBox');box.replaceChildren();
+  const cta=document.createElement('div');cta.className='yt-cta';
+  if(t.youtube_channel){cta.innerHTML='<span>✅ Conectado ao YouTube: <b>'+safe(t.youtube_channel.title)+'</b></span>';}
+  else{cta.innerHTML='<span>Este canal ainda não está ligado ao YouTube.</span><button class="primary">Conectar ao YouTube</button>';cta.querySelector('button').onclick=action(()=>connectYouTube(t));}
+  box.append(cta);
   const base='/canal/'+t.id+'/marca/', v='?v='+encodeURIComponent(t.name);
   const imgs=document.createElement('div');imgs.className='brand-imgs';
   imgs.innerHTML='<img class="brand-avatar" alt="Foto de perfil do canal"><img class="brand-banner" alt="Banner do canal">';
@@ -140,8 +150,7 @@ async function showPilot(t){
   bind('saveGemini',async()=>{await api('/api/youtube-key',{name:'gemini',key:$('geminiKey').value.trim()});notify('Chave do Gemini salva.');showPilot(t);});
   bind('saveGroq',async()=>{await api('/api/youtube-key',{name:'groq',key:$('groqKey').value.trim()});notify('Chave do Groq salva.');showPilot(t);});
   $('oauthFile').onchange=action(async e=>{if(!e.target.files.length)return;const f=new FormData();f.append('file',e.target.files[0]);await api('/api/oauth-client',f);notify('Arquivo de permissão salvo.');showPilot(t);});
-  bind('ytConnect',async()=>{const r=await api('/api/templates/'+t.id+'/youtube/connect',{});window.open(r.url,'_blank');notify('Autorize na aba do Google e depois volte aqui.');
-    const until=Date.now()+300000;const tick=setInterval(async()=>{await refresh();const nt=state.templates.find(x=>x.id===t.id);if(nt?.youtube_channel||Date.now()>until){clearInterval(tick);if(nt?.youtube_channel)notify('Canal conectado: '+nt.youtube_channel.title);}},4000);});
+  bind('ytConnect',()=>connectYouTube(t));
   if(yt)bind('ytBranding',async()=>{await api('/api/templates/'+t.id+'/youtube/branding',{});notify('Banner e descrição aplicados no YouTube. A foto de perfil troque no YouTube Studio.');});
   bind('apSave',async()=>{await api('/api/templates/'+t.id+'/autopilot',{enabled:$('apOn').checked,per_week:+$('apWeek').value,time:$('apTime').value,privacy:$('apPrivacy').value,publish_time:$('apPublish').value});await refresh();notify('Agenda salva.');});
   bind('apRun',async()=>{await api('/api/templates/'+t.id+'/run-now',{});notify('Piloto iniciado: tema, roteiro, vídeo e envio. Acompanhe no diário e em Produção.');setTimeout(refresh,4000);});
