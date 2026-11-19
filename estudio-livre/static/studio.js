@@ -1,7 +1,7 @@
 const $ = id => document.getElementById(id);
 const token = document.querySelector('meta[name=studio-token]').content;
 const safe = value => String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
-let state, selected, noticeTimer;
+let state, selected, noticeTimer, inspiration=null, lastForeign=false;
 function notify(text) {
   $("notice").textContent = text;
   $("notice").hidden = false;
@@ -91,11 +91,12 @@ bind('inspectModel',async()=>{
 });
 bind('makePrompt',async()=>{
   if(!$('idea').value.trim())throw Error('Escreva sua ideia primeiro.');
-  const result=await api('/api/prompt',{reference:$('baseRef').value.trim(),idea:$('idea').value,template_id:$('activeMold').value});
+  const result=await api('/api/prompt',{reference:$('baseRef').value.trim(),idea:$('idea').value,template_id:$('activeMold').value,inspiration});
   $('prompt').value=result.prompt;$('promptBox').hidden=false;
 });
 bind('copy',async()=>{await navigator.clipboard.writeText($('prompt').value);notify('Prompt copiado.');});
 const example={title:'Por que a Lua muda de forma?',thumbnail_text:'Uma Lua, muitas fases',description:'Um passeio pelas fases da Lua.',tags:['Lua','astronomia'],scenes:[{text:'A Lua parece mudar de forma ao longo do mês. O Sol ilumina cerca de metade dela o tempo todo.',caption:'Uma metade iluminada',visual:'Lua ao lado da Terra'},{text:'Conforme a Lua gira ao redor da Terra, vemos porções diferentes dessa metade iluminada. É assim que surgem as fases.',caption:'O nosso ponto de vista muda',visual:'Diagrama da órbita lunar'}]};
+$('idea').oninput=()=>{if(inspiration&&$('idea').value!==inspiration.title){inspiration=null;$('inspirationInfo').hidden=true;}};
 bind('example',()=>{$('idea').value=example.title;$('script').value=JSON.stringify(example,null,2);});
 function parseScript(){
   const raw=$('script').value.trim().replace(/^\x60\x60\x60(?:json)?\s*/i,'').replace(/\s*\x60\x60\x60$/,'').trim();
@@ -179,36 +180,54 @@ bind('storeKey',async()=>{
   notify('Chave salva no perfil do Windows.');
 });
 const number = new Intl.NumberFormat('pt-BR',{notation:'compact',maximumFractionDigits:1});
-function showResults(list,query){
+const clock=s=>s?Math.floor(s/60)+':'+String(s%60).padStart(2,'0'):'—';
+function useAsModel(r){
+  inspiration={title:r.title,seconds:r.seconds,per_day:r.per_day,tags:r.tags||[],foreign:lastForeign};
+  $('idea').value=r.title;$('baseRef').value='';$('modelInfo').textContent='';
+  const vertical=state.templates.find(t=>t.format==='vertical'), horizontal=state.templates.find(t=>t.format!=='vertical');
+  const pick=r.short?vertical:horizontal; if(pick)$('activeMold').value=pick.id;
+  $('inspirationInfo').hidden=false;
+  $('inspirationInfo').textContent='Modelo: “'+r.title+'” · '+clock(r.seconds)+(r.short?' · Shorts':'')+' · '+number.format(r.per_day)+' views/dia.'+(inspiration.foreign?' Vídeo da gringa: o roteiro vai ADAPTAR o tema para o Brasil.':'')+' O roteiro será ORIGINAL sobre o mesmo tema. Clique em Preparar prompt.';
+  page('editor');window.scrollTo(0,0);
+}
+function showResults(list,query,cached){
   const grid=$('results');
   grid.replaceChildren();
-  $('count').textContent=query+' · '+list.length+' resultados';
+  $('count').textContent=(query||'Em alta')+' · '+list.length+' resultados'+(cached?' · da memória (sem gastar cota)':'');
   if(!list.length)grid.textContent='Nenhum vídeo encontrado para este período.';
   for(const r of list){
     const card=document.createElement('article');
     card.className='video-card';
     const ratio=r.score==null?'—':r.score.toLocaleString('pt-BR')+'×';
-    card.innerHTML='<div class="metrics"><b title="Visualizações por inscrito">'+safe(ratio)+'</b><span>'+safe(r.subscribers==null?'—':number.format(r.subscribers))+' inscritos</span><span>'+safe(number.format(r.views))+' views</span></div><a class="preview" target="_blank" rel="noreferrer"><img loading="lazy" alt=""></a><h3></h3><small></small><button>Modelar vídeo</button>';
+    card.innerHTML='<div class="metrics"><b title="Visualizações por dia">'+safe(number.format(r.per_day??0))+'/dia</b><span title="Views ÷ inscritos">'+safe(ratio)+'</span><span>'+safe(number.format(r.views))+' views</span><span>'+safe(r.subscribers==null?'—':number.format(r.subscribers))+' inscr.</span></div><a class="preview" target="_blank" rel="noreferrer"><img loading="lazy" alt=""><em></em></a><h3></h3><small></small><button>Criar vídeo original neste tema</button>';
     const link=card.querySelector('a');
     link.href='https://www.youtube.com/watch?v='+encodeURIComponent(r.id);
     link.setAttribute('aria-label','Assistir a '+r.title);
     card.querySelector('img').src='https://i.ytimg.com/vi/'+encodeURIComponent(r.id)+'/mqdefault.jpg';
+    card.querySelector('em').textContent=(r.short?'SHORTS · ':'')+clock(r.seconds);
     card.querySelector('h3').textContent=r.title;
-    card.querySelector('small').textContent=r.channel+' · '+new Date(r.published).toLocaleDateString('pt-BR');
-    card.querySelector('button').onclick=()=>{$('idea').value=r.title;$('baseRef').value=link.href;$('modelInfo').textContent='';page('editor');window.scrollTo(0,0);};
+    card.querySelector('small').textContent=r.channel+' · '+new Date(r.published).toLocaleDateString('pt-BR')+(r.engagement?' · '+r.engagement+'% engaj.':'');
+    card.querySelector('button').onclick=()=>useAsModel(r);
     grid.append(card);
   }
 }
+$('mode').addEventListener('change',()=>{$('query').placeholder=$('mode').value.startsWith('gringa')?'Digite em inglês (ex.: airplane facts, history mysteries)…':'Caçar ideias sobre um nicho…';});
 $('hunt').onsubmit=action(async e=>{
   e.preventDefault();
   const query=$('query').value.trim();
-  if(!query||!$('days').reportValidity())return;
+  if(($('mode').value!=='trending'&&!query)){notify('Digite um nicho ou escolha “Em alta no país”.');return;}
+  if(!$('days').reportValidity())return;
   $('search').disabled=true;
   $('search').textContent='Buscando…';
   try {
-    const list=await api('/api/research',{query,key:$('key').value,mode:$('mode').value,days:$('days').value,language:$('lang').value});
-    showResults(list,query);
-    localStorage.setItem('studio.last',JSON.stringify({list,query,mode:$('mode').value,days:$('days').value,lang:$('lang').value}));
+    const gringa=$('mode').value.startsWith('gringa');
+    const mode=gringa?($('mode').value==='gringa_shorts'?'shorts':'videos'):$('mode').value;
+    const region=gringa?'US':$('region').value, language=gringa?'en':$('lang').value;
+    lastForeign=region!=='BR'&&region!=='PT';
+    const r=await api('/api/research',{query,key:$('key').value,mode,days:$('days').value,language,region,sort:$('sort').value,category:$('category').value,channel_months:$('months').value});
+    const list=r.results;
+    showResults(list,query,r.cached);
+    try{localStorage.setItem('studio.last',JSON.stringify({list,query,mode:$('mode').value,days:$('days').value,lang:$('lang').value}));}catch{}
   }finally{$('search').disabled=false;$('search').textContent='Caçar';}
 });
 bind('filter',()=>{$('filters').hidden=!$('filters').hidden;$('filter').setAttribute('aria-expanded',String(!$('filters').hidden));});

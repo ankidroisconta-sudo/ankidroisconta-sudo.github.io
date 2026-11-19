@@ -39,8 +39,11 @@ DEFAULT_TEMPLATE = {'id': 'documental', 'name': 'Documental claro', 'channel': '
     'instructions': 'Tom curioso, explicações claras e fatos verificáveis. Gancho inicial curto. Conclusão útil. Evitar promessas e repetição.',
     'minutes': 2, 'format': 'horizontal', 'resolution': 1080, 'voice': '', 'accent': '#ffd84d',
     'captions': 'dinamica', 'music': 'ambiente'}
+SHORTS_TEMPLATE = dict(DEFAULT_TEMPLATE, id='shorts', name='Shorts vertical', minutes=0.75, format='vertical',
+    instructions='Gancho nos 2 primeiros segundos. Frases curtas e diretas. Um fato surpreendente por cena. Final que conecta com o começo.')
+
 def load_state():
-    fresh = {'templates': [copy.deepcopy(DEFAULT_TEMPLATE)], 'projects': [], 'jobs': []}
+    fresh = {'templates': [copy.deepcopy(DEFAULT_TEMPLATE), copy.deepcopy(SHORTS_TEMPLATE)], 'projects': [], 'jobs': []}
     if not STATE.exists(): return fresh
     try:
         data = json.loads(STATE.read_text('utf-8'))
@@ -49,6 +52,7 @@ def load_state():
         return fresh
     for key in fresh: data.setdefault(key, fresh[key])
     if not data['templates']: data['templates'] = fresh['templates']
+    if not any(t.get('format') == 'vertical' for t in data['templates']): data['templates'].append(copy.deepcopy(SHORTS_TEMPLATE))
     return data
 state = load_state()
 
@@ -262,16 +266,37 @@ def prompt():
                'thumbnail_text': 'Até seis palavras', 'scenes': [{'text': 'Narração completa desta cena.',
                'caption': 'Frase curta na tela', 'visual': 'city skyline at night, people walking street, aerial traffic'}]}
     guide='Divida a narração em cenas de 15 a 35 segundos.'
+    minutes = t['minutes']
+    model = d.get('inspiration') or {}
+    inspiration = ''
+    if model.get('title'):
+        seconds = max(15, min(3600, int(model.get('seconds') or 0) or int(t['minutes'] * 60)))
+        minutes = round(seconds / 60, 2)
+        short = seconds <= 180
+        guide = ('Formato Shorts vertical: gancho forte nos 2 primeiros segundos, frases curtas, cenas de 4 a 8 segundos, final que leva a assistir de novo.'
+                 if short else 'Divida a narração em cenas de 10 a 30 segundos. Gancho forte nos primeiros 5 segundos e uma pergunta que só é respondida no final.')
+        tags = ', '.join(str(x) for x in (model.get('tags') or [])[:12])
+        inspiration = (f"\nVídeo viral usado como INSPIRAÇÃO (não copie): título '{str(model['title'])[:200]}', "
+                       f"{seconds} segundos, cerca de {model.get('per_day', '?')} visualizações por dia"
+                       + (f", tags: {tags}" if tags else '') + ". "
+                       "Entenda por que o tema e o gancho atraem cliques e crie um vídeo ORIGINAL sobre o mesmo assunto: "
+                       "outro título, outro ângulo, outros exemplos, outra ordem de ideias e frases próprias. "
+                       "Não mencione o outro vídeo nem o outro canal. Traga algo que ele não traz (um dado novo, uma explicação melhor ou uma curiosidade extra).")
+        if model.get('foreign'):
+            inspiration += (" O vídeo de inspiração é de fora do Brasil e em outro idioma: NÃO traduza. Adapte o tema para o público brasileiro, "
+                            "com exemplos, comparações, unidades (reais, quilômetros, °C) e referências que façam sentido no Brasil, "
+                            "e confira se os fatos valem para cá.")
     if d.get('reference'):
         _,profile=reference_profile(d['reference'])
         guide='Siga a ordem e os tempos do modelo. Duração total: '+str(round(profile['duracao'],2))+' segundos. Ignore a duração do molde do canal. Planos (segundos): '+json.dumps([(round(x['inicio'],2),round(x['fim'],2),x['tipo']) for x in profile['planos']],ensure_ascii=False)
     return jsonify(prompt=f'''Crie um roteiro ORIGINAL sobre: {str(d.get('idea', ''))[:4000]}.
 Canal: {t['channel']}. Nicho: {t['niche']}. Idioma: {t['language']}.
-Duração pretendida: {t['minutes']} minutos, aproximadamente {round(t['minutes'] * 135)} palavras.
+Duração pretendida: {minutes} minutos, aproximadamente {round(minutes * 145)} palavras.{inspiration}
 Orientações editoriais: {t['instructions']}
 {guide} Não copie falas ou thumbnails de referências.
 Não invente fatos, métricas ou fontes. Indique na descrição os fatos que ainda precisam de checagem.
 Para cada cena escreva text (narração), caption (até 100 caracteres) e visual: 2 a 4 buscas curtas EM INGLÊS separadas por vírgula, cada uma descrevendo uma tomada diferente e concreta que existiria em banco de vídeos (ex.: 'chef cutting vegetables, steam rising from pan, close up spices'). Evite nomes próprios e conceitos abstratos no visual. Inclua media com valor video, imagem ou animacao (animacao = tipografia animada gerada por código, ideal para números, listas e conceitos abstratos; nesse caso coloque o número ou a ideia-chave no caption). Prefira video.
+Crie também um título curioso e honesto (até 70 caracteres, sem clickbait enganoso), thumbnail_text com até 5 palavras e uma descrição com 2 a 3 frases e as fontes.
 Retorne SOMENTE um objeto JSON válido neste formato, sem markdown:
 {json.dumps(example, ensure_ascii=False)}''')
 
@@ -333,40 +358,106 @@ def store_youtube_key():
         temporary.replace(target)
     return jsonify(ok=True)
 
+CACHE_TTL = 6 * 3600
+SEARCH_CACHE = {}
+
+def iso_seconds(value):
+    m = re.fullmatch(r'P(?:(\d+)D)?T?(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?', value or '')
+    if not m: return 0
+    d, h, mi, se = (int(x or 0) for x in m.groups())
+    return d * 86400 + h * 3600 + mi * 60 + se
+
+def research_cached(params, run_query):
+    """Guarda cada pesquisa por 6 horas (memória e disco) para economizar a cota grátis do YouTube."""
+    key = json.dumps(params, sort_keys=True)
+    path = DATA / 'pesquisas.json'
+    if not SEARCH_CACHE and path.is_file():
+        try: SEARCH_CACHE.update(json.loads(path.read_text('utf-8')))
+        except ValueError: pass
+    hit = SEARCH_CACHE.get(key)
+    if hit and time.time() - hit['at'] < CACHE_TTL:
+        return hit['results'], True
+    results = run_query()
+    SEARCH_CACHE[key] = {'at': time.time(), 'results': results}
+    for k in [k for k, v in SEARCH_CACHE.items() if time.time() - v['at'] > CACHE_TTL]: SEARCH_CACHE.pop(k)
+    with LOCK:
+        tmp = path.with_suffix('.tmp'); tmp.write_text(json.dumps(SEARCH_CACHE, ensure_ascii=False), 'utf-8'); tmp.replace(path)
+    return results, False
+
+def enrich(videos, key):
+    channel_ids = ','.join(set(x['snippet']['channelId'] for x in videos))
+    channels = {}
+    for i in range(0, len(channel_ids.split(',')), 50):
+        part = ','.join(channel_ids.split(',')[i:i + 50])
+        if part: channels.update({x['id']: x for x in youtube('channels', {'part': 'snippet,statistics', 'id': part}, key)})
+    now = datetime.now(timezone.utc)
+    out = []
+    for v in videos:
+        sn = v['snippet']; ch = channels.get(sn['channelId'], {})
+        stat = ch.get('statistics', {}); vs = v.get('statistics', {})
+        subs = None if stat.get('hiddenSubscriberCount') else int(stat.get('subscriberCount', 0))
+        views = int(vs.get('viewCount', 0))
+        published = datetime.fromisoformat(sn['publishedAt'].replace('Z', '+00:00'))
+        age_days = max(1 / 24, (now - published).total_seconds() / 86400)
+        seconds = iso_seconds(v.get('contentDetails', {}).get('duration'))
+        likes = int(vs.get('likeCount', 0)); comments = int(vs.get('commentCount', 0))
+        created = ch.get('snippet', {}).get('publishedAt', '')
+        out.append({'id': v['id'], 'title': sn['title'], 'channel': sn['channelTitle'], 'channel_id': sn['channelId'],
+            'views': views, 'subscribers': subs, 'score': round(views / subs, 2) if subs else None,
+            'per_day': round(views / age_days), 'age_days': round(age_days, 1), 'seconds': seconds, 'short': 0 < seconds <= 180,
+            'engagement': round(100 * (likes + comments) / views, 2) if views else 0,
+            'published': sn['publishedAt'], 'channel_created': created,
+            'channel_videos': int(stat.get('videoCount', 0) or 0),
+            'tags': sn.get('tags', [])[:15], 'description': sn.get('description', '')[:400],
+            'url': 'https://www.youtube.com/watch?v=' + v['id']})
+    return out
+
 @app.post('/api/research')
 def research():
     d = request.get_json()
     key = str(d.get('key', '')).strip()
-    if not key: key = stored_youtube_key()
+    if not key: key = stored_youtube_key() or os.environ.get('YOUTUBE_API_KEY', '')
     if not key: raise ValueError('Configure a chave do YouTube ou use a pesquisa manual.')
-    params = {'part': 'snippet', 'type': 'video', 'q': str(d.get('query', ''))[:200], 'maxResults': 25,
-              'order': 'viewCount', 'relevanceLanguage': d.get('language', 'pt'),
-              'publishedAfter': (datetime.now(timezone.utc) - timedelta(days=max(1, min(365, int(d.get('days', 30)))))).isoformat()}
-    mode = d.get('mode', 'videos')
-    if mode == 'shorts': params['videoDuration'] = 'short'
-    items = youtube('search', params, key)
-    ids = ','.join(x['id']['videoId'] for x in items)
-    if not ids: return jsonify([])
-    videos = youtube('videos', {'part': 'snippet,statistics,contentDetails', 'id': ids}, key)
-    channel_ids = ','.join(set(x['snippet']['channelId'] for x in videos))
-    channels = {x['id']: x for x in youtube('channels', {'part': 'snippet,statistics', 'id': channel_ids}, key)}
-    results = []
-    for v in videos:
-        sn = v['snippet']; ch = channels.get(sn['channelId'], {})
-        stat = ch.get('statistics', {})
-        subs = None if stat.get('hiddenSubscriberCount') else int(stat.get('subscriberCount', 0))
-        views = int(v.get('statistics', {}).get('viewCount', 0))
-        results.append({'id': v['id'], 'title': sn['title'], 'channel': sn['channelTitle'],
-            'views': views, 'subscribers': subs, 'score': round(views / subs, 2) if subs else None,
-            'published': sn['publishedAt'], 'channel_created': ch.get('snippet', {}).get('publishedAt', ''),
-            'url': 'https://www.youtube.com/watch?v=' + v['id']})
+    mode = d.get('mode', 'videos') if d.get('mode') in ('videos', 'shorts', 'trending', 'channels') else 'videos'
+    region = str(d.get('region', 'BR'))[:2].upper()
+    if not re.fullmatch('[A-Z]{2}', region): region = 'BR'
+    language = str(d.get('language', 'pt'))[:5]
+    days = max(1, min(365, int(d.get('days', 30))))
+    query = str(d.get('query', '')).strip()[:200]
+    category = str(d.get('category', ''))
+    if mode != 'trending' and not query: raise ValueError('Digite um nicho ou assunto.')
+    params = dict(mode=mode, region=region, language=language, days=days, query=query, category=category)
+
+    def run_query():
+        if mode == 'trending':
+            p = {'part': 'snippet,statistics,contentDetails', 'chart': 'mostPopular', 'regionCode': region, 'maxResults': 50}
+            if re.fullmatch(r'\d{1,3}', category): p['videoCategoryId'] = category
+            return enrich(youtube('videos', p, key), key)
+        p = {'part': 'snippet', 'type': 'video', 'q': query, 'maxResults': 50, 'order': 'viewCount',
+             'regionCode': region, 'relevanceLanguage': language,
+             'publishedAfter': (datetime.now(timezone.utc) - timedelta(days=days)).strftime('%Y-%m-%dT%H:%M:%SZ')}
+        if mode == 'shorts': p['videoDuration'] = 'short'
+        ids = ','.join(x['id']['videoId'] for x in youtube('search', p, key) if x.get('id', {}).get('videoId'))
+        if not ids: return []
+        return enrich(youtube('videos', {'part': 'snippet,statistics,contentDetails', 'id': ids}, key), key)
+
+    results, cached = research_cached(params, run_query)
+    months = max(1, min(120, int(d.get('channel_months', 12))))
+    if mode == 'shorts':
+        results = [r for r in results if r['short']]
     if mode == 'channels':
-        seen = set(); unique = []
-        for r in sorted(results, key=lambda r: r['views'], reverse=True):
-            if r['channel'] not in seen: unique.append(r); seen.add(r['channel'])
-        results = sorted(unique, key=lambda r: r['channel_created'], reverse=True)
-    else: results.sort(key=lambda r: r['score'] if r['score'] is not None else -1, reverse=True)
-    return jsonify(results)
+        limit = datetime.now(timezone.utc) - timedelta(days=30 * months)
+        seen, unique = set(), []
+        for r in sorted(results, key=lambda r: r['per_day'], reverse=True):
+            created = r['channel_created']
+            if created and datetime.fromisoformat(created.replace('Z', '+00:00')) >= limit and r['channel_id'] not in seen:
+                unique.append(r); seen.add(r['channel_id'])
+        results = unique
+    order = d.get('sort', 'per_day')
+    keyf = {'score': lambda r: r['score'] if r['score'] is not None else -1, 'views': lambda r: r['views'],
+            'engagement': lambda r: r['engagement']}.get(order, lambda r: r['per_day'])
+    results = sorted(results, key=keyf, reverse=True)
+    return jsonify(results=results, cached=cached)
 
 @app.post('/api/queue')
 def enqueue():
