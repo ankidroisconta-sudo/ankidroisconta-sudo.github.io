@@ -15,6 +15,7 @@ from PIL import Image, ImageOps
 from midia import HEADERS, HTTP, plain
 
 FREE_LICENSE = re.compile(r'Public domain|CC0(?: 1\.0)?|CC BY(?:-SA)? [\d.]+', re.I)
+BAD_TAGS = re.compile(r'green ?screen|chroma|croma|alpha|transparent|overlay|hud|night vision|military|surveillance|thermal|binocular|cartoon|animation|animated|3d render|render|loop background|logo|intro|template|text|lower third', re.I)
 STOP = set('the a an of and in on with for to at by from into over under showing shot view close up closeup footage video image photo'.split())
 
 
@@ -72,6 +73,27 @@ def pexels(query, vertical, want_video):
             for p in r.json().get('photos', [])]
 
 
+def chroma_or_blank(path):
+    """Recusa clipes de tela verde/azul ou quase vazios (comuns em bancos de vídeo)."""
+    import subprocess
+    import numpy as np
+    try:
+        raw = subprocess.run(['ffmpeg', '-v', 'error', '-ss', '1', '-i', str(path), '-frames:v', '3', '-vf', 'fps=1,scale=64:36',
+                              '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-'], capture_output=True, timeout=60,
+                             creationflags=0x08000000 if os.name == 'nt' else 0).stdout
+        px = np.frombuffer(raw, np.uint8).reshape(-1, 3).astype(int)
+    except Exception:
+        return False
+    if not len(px):
+        return False
+    r, g, b = px[:, 0], px[:, 1], px[:, 2]
+    green = np.mean((g > 140) & (g > r + 60) & (g > b + 60))
+    blue = np.mean((b > 140) & (b > r + 70) & (b > g + 40) & (g > 60))
+    lit = px[px.sum(1) > 60]
+    tinted = len(lit) > 50 and lit[:, 1].mean() > 1.6 * max(1, lit[:, 0].mean()) and lit[:, 1].mean() > 1.6 * max(1, lit[:, 2].mean())
+    return green > 0.2 or blue > 0.35 or px.std() < 6 or tinted  # tinted = visão noturna/monitor verde
+
+
 def pixabay(query, vertical, want_video):
     key = secret('pixabay')
     if not key:
@@ -82,6 +104,8 @@ def pixabay(query, vertical, want_video):
         r.raise_for_status()
         out = []
         for h in r.json().get('hits', []):
+            if BAD_TAGS.search(h.get('tags', '')):
+                continue
             sizes = h.get('videos', {})
             pick = next((sizes[s] for s in ('large', 'medium', 'small') if sizes.get(s, {}).get('url')), None)
             if pick:

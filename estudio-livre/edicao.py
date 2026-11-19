@@ -323,7 +323,7 @@ def montar(p, t, folder, wavs, durations, size, data_dir, card, progress):
                     continue
                 try:
                     got = acervo.fetch(cand, folder / f'midia-{n:04}')
-                    if cand['kind'] == 'video' and media_seconds(got) < 1.5:
+                    if cand['kind'] == 'video' and (media_seconds(got) < 1.5 or acervo.chroma_or_blank(got)):
                         continue
                     source, kind, credit = got, cand['kind'], cand['credit']
                     used.add(cand['origin'])
