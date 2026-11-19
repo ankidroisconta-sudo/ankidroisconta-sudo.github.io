@@ -1,0 +1,30 @@
+﻿ESTÚDIO LIVRE PARA WINDOWS
+
+COMO USAR (3 PASSOS)
+1. Extraia esta pasta (botão direito no zip > Extrair tudo). Não rode de dentro do zip.
+2. Dê dois cliques em Iniciar.cmd. Se o Windows mostrar "O Windows protegeu o computador", clique em "Mais informações" > "Executar assim mesmo".
+3. Na primeira vez, o estúdio instala sozinho o Python e o FFmpeg (pelo winget) e os componentes. Aceite as permissões que aparecerem. Se pedir, feche a janela e abra Iniciar.cmd de novo. O navegador abre sozinho.
+
+O que mudou nesta versão:
+- Instalação automática de Python e FFmpeg; a voz neural virou opcional (se não instalar, usa a voz do Windows).
+- A produção não para mais quando falta mídia na internet: tenta clipe, depois foto livre e, por último, um cartão gráfico.
+- Clipes curtos repetem até preencher o plano, em vez de dar erro.
+- Botões para excluir roteiros, tentar de novo e remover trabalhos da fila.
+- Thumbnail sem o texto da legenda sobreposto; download de referência do YouTube mais robusto.
+- Se a porta 8765 estiver ocupada, abre na próxima livre. Estado corrompido não impede mais de abrir.
+
+A narração usa a voz neural Piper em português, uma voz instalada no Windows ou o áudio que você enviar por cena.
+
+Para experimentar, abra Roteiro, clique em Experimentar com exemplo e depois em Salvar roteiro. Ajuste o título, os textos e as imagens. Clique em Salvar e produzir. Em Produção, assista ao vídeo e baixe o pacote.
+
+Para criar seu próprio vídeo, defina o canal, o idioma, o estilo e a voz em Moldes. Na Mesa de roteiro, escreva a ideia e clique em Preparar prompt. Copie para seu ChatGPT grátis ou Claude Pro e cole a resposta em Salvar roteiro. Também é possível digitar um texto e separar as cenas por uma linha em branco. O programa aceita uma lista JSON de roteiros para importar em lote.
+
+Para seguir um vídeo, clique em Modelar vídeo na aba Ideias, cole um link do YouTube no editor ou envie uma referência local (até 100 MB). Ver estrutura do modelo mede os cortes, o movimento e a proporção. Preparar prompt inclui o plano no pedido de roteiro. A montagem com material novo segue os tempos detectados. Usa clipe onde detecta movimento e imagem onde detecta um plano estático. A análise é aproximada para fotos com zoom, transições suaves e composição complexa. Para uma cópia visual da montagem de um arquivo seu, marque Preservar toda a montagem visual no editor. Esse modo troca a narração e mantém os quadros do vídeo-base.
+
+Sem referência, a produção usa clipes por padrão e imagens para diagramas e documentos. É possível escolher o tipo e anexar seu próprio clipe, foto ou áudio por cena. A busca de clipes usa Wikimedia Commons e Internet Archive com licenças identificadas. O exemplo da rotação lunar usa Moon Essentials: Turntable da NASA. Quando uma fonte limita downloads ou não há clipe com duração suficiente, consulte a indicação do plano que ficou pendente. O pacote inclui créditos e o mapa de cortes em modelo.json. A voz automática em português é sintetizada localmente com Piper, com a voz instalada no Windows como alternativa.
+
+Em Descoberta, você pode abrir uma pesquisa no YouTube sem chave. Para calcular as métricas, habilite YouTube Data API v3 no seu projeto Google Cloud e crie uma chave restrita a essa API. Cole-a no campo protegido. Use Salvar chave neste Windows para guardar a chave criptografada no perfil local. Depois, deixe o campo vazio para pesquisar com a chave salva. O ranking de canais considera a data de criação dos canais encontrados naquela pesquisa.
+
+A data planejada é salva com o projeto. Para publicar ou agendar, use o link do YouTube Studio. O pacote contém MP4, thumbnail JPG, legenda SRT por cena, texto de publicação e projeto JSON. Para preservar todos os vídeos e anexos, faça uma cópia da pasta dados com o aplicativo fechado. O backup disponível na interface contém roteiros, moldes, histórico e anexos. Os MP4 são baixados separadamente.
+
+O servidor atende apenas no computador em http://127.0.0.1:8765. Mantenha o computador ligado e o estúdio aberto durante a renderização.

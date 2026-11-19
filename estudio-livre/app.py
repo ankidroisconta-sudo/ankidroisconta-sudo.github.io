@@ -1,0 +1,662 @@
+"""Estúdio Livre: produção local, sem API paga de IA."""
+import copy
+import io
+import json
+import os
+import queue
+import re
+import secrets
+import shutil
+import subprocess
+import threading
+import time
+import uuid
+import wave
+import zipfile
+import modelagem as model
+from midia import illustrate, load_font, narrate
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+
+import requests
+from flask import Flask, jsonify, render_template, request, send_from_directory
+from PIL import Image, ImageDraw, ImageEnhance, ImageFilter, ImageFont, ImageOps
+
+ROOT = Path(__file__).resolve().parent
+DATA = Path(os.environ.get('STUDIO_DATA', ROOT / 'dados')).resolve()
+DATA.mkdir(parents=True, exist_ok=True)
+STATE = DATA / 'estado.json'
+LOCK = threading.RLock()
+TASKS = queue.Queue()
+TOKEN = secrets.token_urlsafe(32)
+WINDOWS = os.name == 'nt'
+NO_WINDOW = 0x08000000 if WINDOWS else 0
+app = Flask(__name__)
+app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024
+DEFAULT_TEMPLATE = {'id': 'documental', 'name': 'Documental claro', 'channel': 'Meu canal',
+    'niche': 'Curiosidades e conhecimento', 'language': 'Português brasileiro',
+    'instructions': 'Tom curioso, explicações claras e fatos verificáveis. Gancho inicial curto. Conclusão útil. Evitar promessas e repetição.',
+    'minutes': 2, 'format': 'horizontal', 'resolution': 720, 'voice': '', 'accent': '#b6ef62'}
+def load_state():
+    fresh = {'templates': [copy.deepcopy(DEFAULT_TEMPLATE)], 'projects': [], 'jobs': []}
+    if not STATE.exists(): return fresh
+    try:
+        data = json.loads(STATE.read_text('utf-8'))
+    except (OSError, ValueError):
+        STATE.replace(STATE.with_name(f'estado-corrompido-{int(time.time())}.json'))
+        return fresh
+    for key in fresh: data.setdefault(key, fresh[key])
+    if not data['templates']: data['templates'] = fresh['templates']
+    return data
+state = load_state()
+
+def persist():
+    temp = STATE.with_suffix('.tmp')
+    temp.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding='utf-8')
+    temp.replace(STATE)
+
+with LOCK:
+    for job in state['jobs']:
+        if job['status'] in ('queued', 'running'):
+            job.update(status='error', message='Produção interrompida ao fechar o aplicativo. Enfileire novamente.')
+    persist()
+
+def ident():
+    return uuid.uuid4().hex
+
+def find(kind, key):
+    found = next((x for x in state[kind] if x['id'] == key), None)
+    if not found:
+        raise ValueError('Item não encontrado.')
+    return found
+
+def run(args, timeout=300):
+    p = subprocess.run(args, capture_output=True, text=True, encoding='utf-8', errors='replace',
+                       timeout=timeout, creationflags=NO_WINDOW)
+    if p.returncode:
+        raise RuntimeError(p.stderr[-2200:] or p.stdout[-2200:] or 'Falha ao executar ferramenta local.')
+    return p.stdout
+
+@app.before_request
+def local_only():
+    if request.host.split(':')[0] not in ('127.0.0.1', 'localhost'):
+        return jsonify(error='Acesso apenas local.'), 403
+    if request.method not in ('GET', 'HEAD', 'OPTIONS') and request.headers.get('X-Studio-Token') != TOKEN:
+        return jsonify(error='Reabra a página para atualizar a sessão local.'), 403
+
+@app.errorhandler(Exception)
+def error(exc):
+    from werkzeug.exceptions import HTTPException
+    code = exc.code if isinstance(exc, HTTPException) else 400
+    return jsonify(error=str(exc)), code
+
+@app.get('/')
+def index():
+    return render_template('index.html', token=TOKEN)
+
+@app.get('/api/state')
+def get_state():
+    with LOCK:
+        return jsonify(copy.deepcopy(state))
+
+@app.get('/api/system')
+def system():
+    voices = []
+    if WINDOWS:
+      try:
+        raw = run(['powershell.exe', '-NoProfile', '-Command',
+          "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; Add-Type -AssemblyName System.Speech; $s=New-Object System.Speech.Synthesis.SpeechSynthesizer; @($s.GetInstalledVoices() | ForEach-Object { @{name=$_.VoiceInfo.Name; culture=$_.VoiceInfo.Culture.Name} }) | ConvertTo-Json -Compress; $s.Dispose()"])
+        voices = json.loads(raw or '[]')
+        if isinstance(voices, dict): voices = [voices]
+      except Exception:
+        voices = []
+    return jsonify(ffmpeg=bool(shutil.which('ffmpeg') and shutil.which('ffprobe')), voices=voices, data=str(DATA))
+
+def clean_template(d):
+    result = {k: str(d.get(k, DEFAULT_TEMPLATE.get(k, '')))[:5000] for k in
+              ('name', 'channel', 'niche', 'language', 'instructions', 'voice')}
+    result['format'] = 'vertical' if d.get('format') == 'vertical' else 'horizontal'
+    result['resolution'] = 1080 if int(d.get('resolution', 720)) == 1080 else 720
+    result['minutes'] = max(0.2, min(60, float(d.get('minutes', 2))))
+    result['accent'] = d.get('accent', '#b6ef62')
+    if not re.fullmatch(r'#[0-9a-fA-F]{6}', result['accent']): raise ValueError('Cor inválida.')
+    return result
+
+@app.post('/api/templates')
+def templates():
+    d = request.get_json()
+    item = clean_template(d)
+    with LOCK:
+        if d.get('id'):
+            target = find('templates', d['id'])
+            target.update(item)
+        else:
+            target = dict(item, id=ident())
+            state['templates'].append(target)
+        persist()
+    return jsonify(target)
+
+def clean_project(d, template_id):
+    scenes = d.get('scenes', [])
+    if not isinstance(scenes, list) or len(scenes) > 150: raise ValueError('Use até 150 cenas por vídeo.')
+    out = []
+    for s in scenes:
+        if not isinstance(s, dict): raise ValueError('Cada cena deve ser um objeto JSON.')
+        text = str(s.get('text', '')).strip()
+        if not text or len(text) > 6000: raise ValueError('Cada cena precisa de texto com até 6.000 caracteres.')
+        out.append({'text': text, 'caption': str(s.get('caption', ''))[:180],
+                    'visual': str(s.get('visual', ''))[:2000], 'media': s.get('media') if s.get('media') in ('imagem','video') else 'auto', 'image': '', 'audio': '', 'video': ''})
+    tags = d.get('tags', [])
+    if isinstance(tags, str): tags = [s.strip() for s in tags.split(',') if s.strip()]
+    return {'id': ident(), 'title': str(d.get('title', 'Vídeo sem título'))[:200],
+        'description': str(d.get('description', ''))[:5000], 'tags': [str(t)[:100] for t in tags][:30],
+        'thumbnail_text': str(d.get('thumbnail_text', d.get('title', 'Novo vídeo')))[:120],
+        'reference': str(d.get('reference', ''))[:1500], 'template_id': template_id,
+        'master': d.get('master') is True, 'scheduled': '', 'scenes': out, 'created': datetime.now(timezone.utc).isoformat()}
+
+@app.post('/api/projects')
+def projects():
+    d = request.get_json()
+    with LOCK:
+        find('templates', d['template_id'])
+        items = d.get('items', [d])
+        if not isinstance(items, list) or not 1 <= len(items) <= 50: raise ValueError('Importe de 1 a 50 vídeos por vez.')
+        new = [clean_project(x, d['template_id']) for x in items]
+        state['projects'].extend(new)
+        persist()
+    return jsonify(new)
+
+@app.put('/api/projects/<pid>')
+def update_project(pid):
+    d = request.get_json()
+    with LOCK:
+        old = find('projects', pid)
+        template_id = d.get('template_id', old['template_id'])
+        find('templates', template_id)
+        updated = clean_project(d, template_id)
+        for idx, s in enumerate(updated['scenes']):
+            if idx < len(old['scenes']):
+                for key in ('image', 'audio','video'): s[key] = old['scenes'][idx].get(key, '')
+        for key in ('title', 'description', 'tags', 'thumbnail_text', 'reference', 'master', 'template_id', 'scenes'):
+            old[key] = updated[key]
+        scheduled = str(d.get('scheduled', ''))
+        if scheduled: datetime.fromisoformat(scheduled)
+        old['scheduled'] = scheduled
+        persist()
+    return jsonify(old)
+
+@app.delete('/api/projects/<pid>')
+def delete_project(pid):
+    with LOCK:
+        find('projects', pid)
+        state['projects'] = [p for p in state['projects'] if p['id'] != pid]
+        persist()
+    return jsonify(ok=True)
+
+@app.post('/api/projects/<pid>/assets/<int:idx>/<kind>')
+def asset(pid, idx, kind):
+    if kind not in ('image', 'audio','video'): raise ValueError('Tipo de arquivo inválido.')
+    with LOCK:
+        project = find('projects', pid)
+        if not 0 <= idx < len(project['scenes']): raise ValueError('Cena inválida.')
+        folder = DATA / 'assets'
+        folder.mkdir(exist_ok=True)
+        uploaded = request.files['file']
+        if kind == 'image':
+            name = ident() + '.jpg'
+            picture = ImageOps.exif_transpose(Image.open(uploaded.stream)).convert('RGB')
+            picture.thumbnail((3840, 3840))
+            picture.save(folder / name, quality=94)
+        elif kind=='video':
+            ext=Path(uploaded.filename).suffix.lower()
+            if ext not in ('.mp4','.mov','.webm','.mkv'): raise ValueError('Envie MP4, MOV, MKV ou WebM.')
+            name=ident()+ext
+            uploaded.save(folder/name)
+            model.probe(folder/name)
+        else:
+            ext = Path(uploaded.filename).suffix.lower()
+            if ext not in ('.wav', '.mp3', '.m4a', '.ogg'): raise ValueError('Envie WAV, MP3, M4A ou OGG.')
+            name = ident() + ext
+            uploaded.save(folder / name)
+        project['scenes'][idx][kind] = name
+        persist()
+    return jsonify(ok=True)
+
+@app.post('/api/reference-file')
+def reference_file():
+    upload=request.files['file']
+    ext=Path(upload.filename).suffix.lower()
+    if ext not in ('.mp4','.webm','.mov','.mkv'):raise ValueError('Arquivo de referência inválido.')
+    folder=DATA/'assets';folder.mkdir(exist_ok=True)
+    path=folder/(ident()+ext)
+    try:
+        upload.save(path)
+        model.probe(path)
+    except Exception:
+        path.unlink(missing_ok=True)
+        raise
+    return jsonify(reference='arquivo:'+path.name)
+
+def reference_profile(ref):
+    path=model.reference_path(ref,DATA)
+    folder=DATA/'referencias';folder.mkdir(exist_ok=True)
+    cached=folder/(path.stem+'-v2.json')
+    if cached.exists():return path,json.loads(cached.read_text('utf8'))
+    profile=model.analyze(path)
+    tmp=cached.with_name(ident()+'.tmp');tmp.write_text(json.dumps(profile),'utf8');tmp.replace(cached)
+    return path,profile
+
+@app.post('/api/reference-plan')
+def reference_plan():
+    return jsonify(reference_profile(request.get_json()['reference'])[1])
+
+@app.post('/api/prompt')
+def prompt():
+    d = request.get_json()
+    with LOCK: t = copy.deepcopy(find('templates', d['template_id']))
+    example = {'title': 'Título original', 'description': 'Descrição e fontes verificadas', 'tags': ['tema'],
+               'thumbnail_text': 'Até seis palavras', 'scenes': [{'text': 'Narração completa desta cena.',
+               'caption': 'Frase curta na tela', 'visual': 'Descrição de uma imagem para criar ou procurar'}]}
+    guide='Divida a narração em cenas de 15 a 35 segundos.'
+    if d.get('reference'):
+        _,profile=reference_profile(d['reference'])
+        guide='Siga a ordem e os tempos do modelo. Duração total: '+str(round(profile['duracao'],2))+' segundos. Ignore a duração do molde do canal. Planos (segundos): '+json.dumps([(round(x['inicio'],2),round(x['fim'],2),x['tipo']) for x in profile['planos']],ensure_ascii=False)
+    return jsonify(prompt=f'''Crie um roteiro ORIGINAL sobre: {str(d.get('idea', ''))[:4000]}.
+Canal: {t['channel']}. Nicho: {t['niche']}. Idioma: {t['language']}.
+Duração pretendida: {t['minutes']} minutos, aproximadamente {round(t['minutes'] * 135)} palavras.
+Orientações editoriais: {t['instructions']}
+{guide} Não copie falas ou thumbnails de referências.
+Não invente fatos, métricas ou fontes. Indique na descrição os fatos que ainda precisam de checagem.
+Para cada cena escreva text (narração), caption (até 100 caracteres) e visual (2 a 5 palavras-chave concretas em inglês para buscar um clipe ou uma imagem. Inclua media com valor video ou imagem; prefira video para ações e imagem para diagramas ou documentos).
+Retorne SOMENTE um objeto JSON válido neste formato, sem markdown:
+{json.dumps(example, ensure_ascii=False)}''')
+
+def youtube(endpoint, params, key):
+    try:
+        response = requests.get('https://www.googleapis.com/youtube/v3/' + endpoint,
+                                params=params, headers={'X-Goog-Api-Key': key}, timeout=35)
+    except requests.RequestException:
+        raise ValueError('Falha de conexão com o YouTube. Confira a internet e tente novamente.') from None
+    if not response.ok:
+        # Do not propagate URLs containing the key to the client or logs.
+        raise ValueError('YouTube recusou a consulta. Verifique a chave, a API ativada, as restrições e a cota no Google Cloud.')
+    return response.json().get('items', [])
+
+KEY_PATH = Path(os.environ.get('LOCALAPPDATA', DATA)) / 'EstudioLivre' / 'youtube.dpapi'
+
+def windows_secret(value, decrypt=False):
+    if not WINDOWS: raise ValueError('Salvar a chave criptografada só funciona no Windows. Cole a chave no campo a cada pesquisa.')
+    operation = (
+        "[Text.Encoding]::UTF8.GetString([Security.Cryptography.ProtectedData]::Unprotect([Convert]::FromBase64String($value),$null,'CurrentUser'))"
+        if decrypt else
+        "[Convert]::ToBase64String([Security.Cryptography.ProtectedData]::Protect([Text.Encoding]::UTF8.GetBytes($value),$null,'CurrentUser'))"
+    )
+    result = subprocess.run(
+        ['powershell.exe', '-NoProfile', '-NonInteractive', '-Command',
+         "$ErrorActionPreference='Stop'; Add-Type -AssemblyName System.Security; $value=[Console]::In.ReadToEnd();" + operation],
+        input=value, capture_output=True, text=True, timeout=15, creationflags=NO_WINDOW)
+    if result.returncode or not result.stdout.strip():
+        raise ValueError('O Windows não conseguiu acessar a credencial deste usuário.')
+    return result.stdout.strip()
+
+def stored_youtube_key():
+    return windows_secret(KEY_PATH.read_text('ascii'), decrypt=True) if KEY_PATH.is_file() else ''
+
+@app.post('/api/youtube-key')
+def store_youtube_key():
+    value = str(request.get_json().get('key', '')).strip()
+    if not 20 <= len(value) <= 256 or not value.isascii() or not value.isprintable():
+        raise ValueError('Chave inválida.')
+    encrypted = windows_secret(value)
+    KEY_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with LOCK:
+        temporary = KEY_PATH.with_suffix('.tmp')
+        temporary.write_text(encrypted, 'ascii')
+        temporary.replace(KEY_PATH)
+    return jsonify(ok=True)
+
+@app.post('/api/research')
+def research():
+    d = request.get_json()
+    key = str(d.get('key', '')).strip()
+    if not key: key = stored_youtube_key()
+    if not key: raise ValueError('Configure a chave do YouTube ou use a pesquisa manual.')
+    params = {'part': 'snippet', 'type': 'video', 'q': str(d.get('query', ''))[:200], 'maxResults': 25,
+              'order': 'viewCount', 'relevanceLanguage': d.get('language', 'pt'),
+              'publishedAfter': (datetime.now(timezone.utc) - timedelta(days=max(1, min(365, int(d.get('days', 30)))))).isoformat()}
+    mode = d.get('mode', 'videos')
+    if mode == 'shorts': params['videoDuration'] = 'short'
+    items = youtube('search', params, key)
+    ids = ','.join(x['id']['videoId'] for x in items)
+    if not ids: return jsonify([])
+    videos = youtube('videos', {'part': 'snippet,statistics,contentDetails', 'id': ids}, key)
+    channel_ids = ','.join(set(x['snippet']['channelId'] for x in videos))
+    channels = {x['id']: x for x in youtube('channels', {'part': 'snippet,statistics', 'id': channel_ids}, key)}
+    results = []
+    for v in videos:
+        sn = v['snippet']; ch = channels.get(sn['channelId'], {})
+        stat = ch.get('statistics', {})
+        subs = None if stat.get('hiddenSubscriberCount') else int(stat.get('subscriberCount', 0))
+        views = int(v.get('statistics', {}).get('viewCount', 0))
+        results.append({'id': v['id'], 'title': sn['title'], 'channel': sn['channelTitle'],
+            'views': views, 'subscribers': subs, 'score': round(views / subs, 2) if subs else None,
+            'published': sn['publishedAt'], 'channel_created': ch.get('snippet', {}).get('publishedAt', ''),
+            'url': 'https://www.youtube.com/watch?v=' + v['id']})
+    if mode == 'channels':
+        seen = set(); unique = []
+        for r in sorted(results, key=lambda r: r['views'], reverse=True):
+            if r['channel'] not in seen: unique.append(r); seen.add(r['channel'])
+        results = sorted(unique, key=lambda r: r['channel_created'], reverse=True)
+    else: results.sort(key=lambda r: r['score'] if r['score'] is not None else -1, reverse=True)
+    return jsonify(results)
+
+@app.post('/api/queue')
+def enqueue():
+    d = request.get_json()
+    ids = d.get('ids', [])
+    if not ids: raise ValueError('Selecione ao menos um vídeo.')
+    if not shutil.which('ffmpeg'): raise ValueError('FFmpeg não encontrado. Veja o guia de instalação.')
+    with LOCK:
+        snapshots = []
+        for pid in dict.fromkeys(ids):
+            p = copy.deepcopy(find('projects', pid))
+            if not p['scenes']: raise ValueError(f"Importe um roteiro em {p['title']} antes de produzir.")
+            if any(j['project_id'] == pid and j['status'] in ('queued', 'running') for j in state['jobs']): continue
+            t = copy.deepcopy(find('templates', p['template_id']))
+            snapshots.append((p, t))
+        jobs = []
+        for p, t in snapshots:
+            job = {'id': ident(), 'project_id': p['id'], 'title': p['title'], 'status': 'queued',
+                   'message': 'Na fila', 'progress': 0, 'created': datetime.now(timezone.utc).isoformat()}
+            state['jobs'].append(job); jobs.append((job['id'], p, t))
+        persist()
+        for task in jobs: TASKS.put(task)
+    return jsonify(ok=True, added=len(jobs))
+
+@app.post('/api/jobs/<jid>/cancel')
+def cancel(jid):
+    with LOCK:
+        j = find('jobs', jid)
+        if j['status'] not in ('queued', 'running'): raise ValueError('Este trabalho já terminou.')
+        j.update(status='cancelled', message='Cancelado. A etapa atual será encerrada antes de liberar a fila.')
+        persist()
+    return jsonify(ok=True)
+
+@app.delete('/api/jobs/<jid>')
+def delete_job(jid):
+    with LOCK:
+        j = find('jobs', jid)
+        if j['status'] in ('queued', 'running'): raise ValueError('Cancele o trabalho antes de removê-lo.')
+        state['jobs'] = [x for x in state['jobs'] if x['id'] != jid]
+        persist()
+    if re.fullmatch('[a-f0-9]{32}', jid): shutil.rmtree(DATA/'renders'/jid, ignore_errors=True)
+    return jsonify(ok=True)
+
+def progress(jid, amount, message):
+    with LOCK:
+        j = find('jobs', jid)
+        if j['status'] == 'cancelled': raise InterruptedError('Cancelado')
+        j.update(status='running', progress=amount, message=message)
+        persist()
+
+def font(size):
+    return load_font(size)
+
+def fit_text(draw, text, box_width, max_height, start_size):
+    for size in range(start_size, 13, -2):
+        ft = font(size); lines = []; line = ''
+        # Split very long tokens to avoid overflowing imported captions.
+        words = []
+        for word in text.split():
+            chunk = ''
+            for letter in word:
+                if chunk and draw.textlength(chunk + letter, font=ft) > box_width:
+                    words.append(chunk); chunk = ''
+                chunk += letter
+            if chunk: words.append(chunk)
+        for word in words:
+            candidate = (line + ' ' + word).strip()
+            if line and draw.textlength(candidate, font=ft) > box_width:
+                lines.append(line); line = word
+            else: line = candidate
+        if line: lines.append(line)
+        if len(lines) * int(size * 1.3) <= max_height: return lines, ft, int(size * 1.3)
+    return lines, ft, int(size * 1.3)
+
+def card(path, scene, title, size, accent, thumbnail=False, auto_picture=None):
+    w, h = size
+    source = auto_picture or DATA / 'assets' / scene.get('image', '')
+    if source.is_file():
+        with Image.open(source) as original:
+            image = original.convert('RGB')
+        im = ImageOps.fit(image, size)
+        ratio = (image.width / image.height) / (w / h)
+        if ratio < .87 or ratio > 1.15:
+            im = ImageEnhance.Brightness(im.filter(ImageFilter.GaussianBlur(24))).enhance(.36)
+            inset = ImageOps.contain(image, size)
+            im.paste(inset, ((w-inset.width)//2,(h-inset.height)//2))
+    else:
+        im = Image.new('RGB', size, '#111e24')
+        dd = ImageDraw.Draw(im)
+        for y in range(h):
+            dd.line((0, y, w, y), fill=(15 + int(9*y/h), 27 + int(14*y/h), 33 + int(18*y/h)))
+        dd.ellipse((int(w*.45), -int(h*.4), int(w*1.3), int(h*.8)), outline=accent, width=max(2, w//400))
+        dd.ellipse((-int(w*.4), int(h*.6), int(w*.4), int(h*1.3)), outline='#3b5360', width=2)
+    im = im.convert('RGBA')
+    shade = Image.new('RGBA', size)
+    ds = ImageDraw.Draw(shade)
+    for y in range(h): ds.line((0, y, w, y), fill=(0, 0, 0, int(205*(y/h)**3)))
+    im = Image.alpha_composite(im, shade).convert('RGB')
+    dd = ImageDraw.Draw(im)
+    margin = int(w*.075)
+    text = title if thumbnail else (scene.get('caption') or title)
+    lines, ft, lineheight = fit_text(dd, text, w-2*margin, int(h*.45), int(w*(.066 if thumbnail else .052)))
+    top = h - int(h*.11) - len(lines)*lineheight
+    dd.rounded_rectangle((margin, top-26, margin+64, top-18), 4, fill=accent)
+    for i, line in enumerate(lines): dd.text((margin, top+i*lineheight), line, font=ft, fill='white')
+    im.save(path, quality=95)
+
+def timestamp(seconds):
+    ms = round(seconds*1000)
+    return f'{ms//3600000:02}:{ms//60000%60:02}:{ms//1000%60:02},{ms%1000:03}'
+
+def pick_media(scene, kind, p, folder, used, shot, frame, n):
+    """Escolhe a mídia do plano: anexo > clipe livre > foto livre > (falha → cartão)."""
+    asset = scene.get('video' if kind == 'video' else 'image') or scene.get('image' if kind == 'video' else 'video')
+    if asset and (DATA/'assets'/asset).is_file():
+        is_video = Path(asset).suffix.lower() in ('.mp4', '.mov', '.webm', '.mkv')
+        return DATA/'assets'/asset, {'fonte': 'Arquivo anexado à cena'}, 'video' if is_video else 'imagem'
+    if kind == 'video':
+        try:
+            source, credit = model.stock_video(scene, p['title'], folder, used, shot['fim']-shot['inicio'])
+            return source, credit, 'video'
+        except Exception:
+            pass  # sem clipe: tenta uma foto livre com movimento de câmera
+    source = folder/f'visual-{n:04}.jpg'
+    credit = illustrate(scene, p['title'], source, frame, used)
+    return source, credit, 'imagem'
+
+def render(jid, p, t):
+    folder = DATA / 'renders' / jid
+    folder.mkdir(parents=True, exist_ok=True)
+    height = t['resolution']; width = height*16//9
+    width += width % 2
+    size = (height, width) if t['format'] == 'vertical' else (width, height)
+    ffmpeg = shutil.which('ffmpeg')
+    srt = []; offset = 0; chunks = []
+    media_log = []; used = set(); cover = None
+    ref=p.get('reference','').strip()
+    if p.get('master') and not ref:raise ValueError('Selecione o vídeo-base para preservar a montagem.')
+    profile=None
+    if ref:
+        progress(jid,0,'Analisando os cortes e o movimento da referência')
+        ref_file,profile=reference_profile(ref)
+    durations=[];speakers=[];voice_parts=[]
+    for idx, scene in enumerate(p['scenes']):
+        percent = round(idx/len(p['scenes'])*38)
+        progress(jid, percent, f'Cena {idx+1}/{len(p["scenes"])} · gerando narração')
+        wav = folder / f'audio-{idx:03}.wav'
+        if scene.get('audio'):
+            speaker = 'Áudio anexado'
+            run([ffmpeg, '-y', '-i', str(DATA/'assets'/scene['audio']), '-vn', '-ar', '44100', '-ac', '1', str(wav)])
+        else:
+            neural = not t['voice'] and t.get('language','').lower().startswith(('portug','pt'))
+            speaker = t['voice'] or 'Voz do Windows'
+            if neural:
+                try:
+                    narrate(scene['text'],wav)
+                    speaker = 'Piper · Faber (pt-BR)'
+                except Exception:
+                    neural = False
+            if not neural:
+                if not WINDOWS: raise ValueError('A voz neural não está disponível e a voz do Windows só funciona no Windows. Anexe um áudio à cena.')
+                spec = folder / f'voz-{idx:03}.json'
+                spec.write_text(json.dumps({'text': scene['text'], 'voice': t['voice']}, ensure_ascii=False), 'utf-8')
+                run(['powershell.exe', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', str(ROOT/'voz.ps1'),
+                     '-InputFile', str(spec), '-OutputFile', str(wav)], timeout=900)
+        speakers.append(speaker)
+        with wave.open(str(wav)) as audio: duration = audio.getnframes()/audio.getframerate()
+        if duration <= 0 or duration > 3600: raise ValueError('Duração de áudio inválida (máximo: 1 hora por cena).')
+        standardized=folder/f'fala-{idx:03}.wav'
+        run([ffmpeg,'-v','error','-y','-i',str(wav),'-af','loudnorm=I=-16:TP=-1.5:LRA=11','-ar','44100','-ac','1',str(standardized)])
+        voice_parts.append(f"file '{standardized.name}'")
+        durations.append(duration)
+    total=sum(durations)
+    if not profile:
+        shots=[];cursor=0
+        for scene,duration in zip(p['scenes'],durations):
+            kind=scene.get('media','auto')
+            if kind=='auto':
+                visual=scene.get('visual','').lower()
+                kind='imagem' if scene.get('image') or any(k in visual for k in ('diagrama','mapa','retrato','fotografia','diagram','chart','documento','portrait','infogr')) else 'video'
+                if scene.get('video'):kind='video'
+            shots.append(dict(inicio=cursor,fim=cursor+duration,tipo=kind,quadro=[0,0,1,1]))
+            cursor+=duration
+        profile=dict(largura=size[0],altura=size[1],duracao=total,fps=30,planos=shots)
+    target=profile['duracao'];ratio=total/target
+    if ratio>1.65:raise ValueError(f'O roteiro falado tem {total:.1f}s para um modelo de {target:.1f}s. Encurte o texto para manter os cortes e uma voz natural.')
+    # Small differences can be paced to the model. Short narrations leave breathing space.
+    speed=max(1.0,ratio)
+    for idx,duration in enumerate(durations):
+        end=min(target,offset+duration/speed)
+        srt.append(f'{idx+1}\n{timestamp(offset)} --> {timestamp(end)}\n{p["scenes"][idx]["text"]}\n')
+        offset=end
+    if p.get('master'):
+        if not ref.startswith('arquivo:'):raise ValueError('Para preservar todos os quadros, envie o seu arquivo-base no editor.')
+        timeline=ref_file
+        media_log.append(dict(fonte='Montagem integral do arquivo-base',voz=', '.join(dict.fromkeys(speakers))))
+    else:
+        for n,shot in enumerate(profile['planos']):
+            progress(jid,40+int(48*n/len(profile['planos'])),f"Plano {n+1}/{len(profile['planos'])} · {shot['tipo']}")
+            elapsed=0;idx=len(durations)-1
+            for k,dur in enumerate(durations):
+                elapsed+=dur/speed
+                if shot['inicio']+0.016<elapsed:idx=k;break
+            if len(profile['planos'])==len(p['scenes']):idx=n
+            scene=p['scenes'][idx];kind=shot['tipo']
+            out=folder/f'parte-{n:04}.mp4'
+            frame=(profile['largura'],profile['altura'])
+            try:
+                source,credit,kind=pick_media(scene,kind,p,folder,used,shot,frame,n)
+                if cover is None:
+                    cover=folder/'capa-base.jpg'
+                    try:
+                        if kind=='imagem':shutil.copyfile(source,cover)
+                        else:run([ffmpeg,'-y','-v','error','-ss','1','-i',str(source),'-frames:v','1',str(cover)])
+                    except Exception:cover=None
+                if not ref and kind=='imagem':
+                    picture=folder/f'cena-{n:04}.jpg'
+                    card(picture,scene,p['title'],size,t['accent'],auto_picture=source)
+                    source=picture
+                model.make_shot(source,kind,shot,profile,out,t['channel'],scene.get('caption') or p['title'])
+            except InterruptedError:raise
+            except Exception as exc:
+                # Último recurso: cartão gráfico gerado localmente, sem internet.
+                try:
+                    kind='imagem';source=folder/f'cartao-{n:04}.jpg'
+                    card(source,scene,p['title'],frame,t['accent'])
+                    credit={'fonte':'Cartão gráfico do Estúdio Livre','observação':'Mídia online indisponível: '+str(exc)[:200]}
+                    model.make_shot(source,kind,shot,profile,out,t['channel'],scene.get('caption') or p['title'])
+                except Exception as final:raise ValueError(f'Plano {n+1} ({shot["inicio"]:.1f}s–{shot["fim"]:.1f}s): {final}') from None
+            chunks.append(f"file '{out.name}'")
+            media_log.append(dict(plano=n+1,inicio=shot['inicio'],fim=shot['fim'],tipo=kind,voz=speakers[idx],**credit))
+        concat=folder/'partes.txt';concat.write_text('\n'.join(chunks),'utf8')
+        timeline=folder/'montagem.mp4'
+        run([ffmpeg,'-y','-f','concat','-safe','0','-i',str(concat),'-c','copy',str(timeline)],timeout=7200)
+    progress(jid,93,'Sincronizando a narração com a montagem')
+    voices=folder/'falas.txt';voices.write_text('\n'.join(voice_parts),'utf8')
+    codec=run(['ffprobe','-v','error','-select_streams','v:0','-show_entries','stream=codec_name','-of','csv=p=0',str(timeline)]).strip()
+    video_options=['-c:v','copy'] if codec in ('h264','hevc','av1') else ['-c:v','libx264','-crf','16','-preset','veryfast']
+    run([ffmpeg,'-y','-i',str(timeline),'-f','concat','-safe','0','-i',str(voices),'-map','0:v:0','-map','1:a:0','-af',f'atempo={speed},apad','-t',str(target),*video_options,'-c:a','aac','-b:a','160k','-movflags','+faststart',str(folder/'video.mp4')],timeout=7200)
+    if p.get('master'):
+        cover=folder/'capa-base.jpg'
+        run([ffmpeg,'-y','-v','error','-i',str(timeline),'-frames:v','1',str(cover)])
+    if cover is not None and not Path(cover).is_file(): cover=None  # usa a imagem da cena 1 ou um cartão gráfico
+    card(folder/'thumbnail.jpg',p['scenes'][0],p['thumbnail_text'],(1280,720),t['accent'],True,cover)
+    (folder/'modelo.json').write_text(json.dumps(profile,indent=2,ensure_ascii=False),'utf8')
+    offset=target
+    (folder/'legendas.srt').write_text('\n'.join(srt), 'utf-8')
+    (folder/'projeto.json').write_text(json.dumps({'project': p, 'template': t}, ensure_ascii=False, indent=2), 'utf-8')
+    (folder/'publicacao.txt').write_text(f"TÍTULO\n{p['title']}\n\nDESCRIÇÃO\n{p['description']}\n\nTAGS\n{', '.join(p['tags'])}\n\nDATA PLANEJADA (não publicada automaticamente)\n{p['scheduled']}\n", 'utf-8')
+    credits = '\n\n'.join('\n'.join(f'{k}: {v}' for k,v in entry.items() if v not in ('', None)) for entry in media_log)
+    (folder/'creditos.txt').write_text(credits, 'utf-8')
+    with (folder/'publicacao.txt').open('a',encoding='utf-8') as publication:
+        publication.write('\nCRÉDITOS PARA A DESCRIÇÃO\n'+credits)
+    with zipfile.ZipFile(folder/'pacote.zip', 'w', zipfile.ZIP_DEFLATED) as bundle:
+        bundle.write(folder/'creditos.txt','creditos.txt')
+        bundle.write(folder/'modelo.json','modelo.json')
+        for name in ('video.mp4', 'thumbnail.jpg', 'legendas.srt', 'projeto.json', 'publicacao.txt'):
+            bundle.write(folder/name, name)
+    progress(jid, 99, 'Concluindo')
+    with LOCK:
+        find('jobs', jid).update(status='done', progress=100, message=f'Pronto · {round(offset)} segundos', duration=offset)
+        persist()
+    cleanup(folder)
+
+TEMPORARY = ('audio-*.wav', 'voz-*.json', 'cena-*.jpg', 'cartao-*.jpg', 'visual-*.jpg', 'parte-*.mp4', 'partes.txt', 'parte-*.png',
+             'clipe-stock.mp4', 'montagem.mp4', 'fala-*.wav', 'falas.txt', 'capa-base.jpg')
+
+def cleanup(folder):
+    # Keep deliverables, remove generated intermediates only from this job's folder.
+    for pattern in TEMPORARY:
+        for file in folder.glob(pattern):
+            try: file.unlink()
+            except OSError: pass
+
+def worker():
+    while True:
+        jid, p, t = TASKS.get()
+        try: render(jid, p, t)
+        except InterruptedError: cleanup(DATA/'renders'/jid)
+        except Exception as exc:
+            with LOCK:
+                try:
+                    job = find('jobs', jid)
+                    if job['status'] != 'cancelled': job.update(status='error', message=str(exc)[-2200:] or 'Falha inesperada.')
+                    persist()
+                except Exception: pass
+            cleanup(DATA/'renders'/jid)
+        finally: TASKS.task_done()
+
+@app.get('/files/<jid>/<name>')
+def files(jid, name):
+    if not re.fullmatch('[a-f0-9]{32}', jid) or name not in ('video.mp4', 'thumbnail.jpg', 'legendas.srt', 'projeto.json', 'publicacao.txt', 'pacote.zip'):
+        return jsonify(error='Arquivo inválido.'), 404
+    return send_from_directory(DATA/'renders'/jid, name, as_attachment=request.args.get('download') == '1', conditional=True)
+
+@app.get('/api/backup')
+def backup():
+    from flask import send_file
+    out = io.BytesIO()
+    with LOCK:
+        with zipfile.ZipFile(out, 'w', zipfile.ZIP_DEFLATED) as z:
+            z.writestr('estado.json', json.dumps(state, ensure_ascii=False, indent=2))
+            for file in (DATA/'assets').glob('*'): z.write(file, 'assets/'+file.name)
+    out.seek(0)
+    return send_file(out, mimetype='application/zip', as_attachment=True, download_name='backup-estudio.zip')
+
+if __name__ == '__main__':
+    threading.Thread(target=worker, daemon=True).start()
+    port = int(os.environ.get('STUDIO_PORT', '8765'))
+    print(f'Abra http://127.0.0.1:{port} — mantenha esta janela aberta durante a produção.', flush=True)
+    app.run(host='127.0.0.1', port=port, debug=False, threaded=True)
