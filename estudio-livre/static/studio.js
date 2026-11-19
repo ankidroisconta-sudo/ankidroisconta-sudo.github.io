@@ -108,9 +108,11 @@ async function showPilot(t){
   const ap=t.autopilot||{}, yt=t.youtube_channel;
   box.innerHTML=`
   <div class="steps-list">
-   <div class="${keys.gemini?'ok':'todo'}"><b>1. Roteiro automático (Gemini, grátis)</b> ${keys.gemini?'· chave salva':''}
-     <p>Crie a chave em <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer">aistudio.google.com/apikey ↗</a> e cole aqui.</p>
-     <div class="row"><input type="password" id="geminiKey" placeholder="Chave do Gemini (começa com AIza)"><button id="saveGemini">Salvar</button></div></div>
+   <div class="${keys.groq||keys.gemini?'ok':'todo'}"><b>1. Roteiro automático (IA grátis)</b> ${keys.groq?'· Groq salvo':''}${keys.gemini?' · Gemini salvo':''}
+     <p><b>Groq</b> (grátis, sem cartão): entre em <a href="https://console.groq.com/keys" target="_blank" rel="noreferrer">console.groq.com/keys ↗</a> com sua conta Google, clique em <i>Create API Key</i> e cole aqui.</p>
+     <div class="row"><input type="password" id="groqKey" placeholder="Chave do Groq (começa com gsk_)"><button id="saveGroq">Salvar</button></div>
+     <p>Ou Gemini, se a sua conta tiver o plano gratuito da API: <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer">aistudio.google.com/apikey ↗</a></p>
+     <div class="row"><input type="password" id="geminiKey" placeholder="Chave do Gemini"><button id="saveGemini">Salvar</button></div></div>
    <div class="${keys.oauth_client?'ok':'todo'}"><b>2. Permissão de envio (uma vez só)</b> ${keys.oauth_client?'· arquivo salvo':''}
      <p>No Google Cloud: Tela de consentimento OAuth (Externo, adicione seu e-mail como usuário de teste) → Credenciais → Criar ID do cliente OAuth → <b>App para computador</b> → baixar JSON. Envie o arquivo:</p>
      <input type="file" id="oauthFile" accept=".json,application/json"></div>
@@ -136,6 +138,7 @@ async function showPilot(t){
   <h3>Diário do piloto</h3><div id="apLog">${(ap.log||[]).slice().reverse().map(l=>'<p class="'+(l.error?'err':'')+'">'+safe(l.at.replace('T',' '))+' · '+safe(l.text)+(l.url?' <a target="_blank" rel="noreferrer" href="'+safe(l.url)+'">abrir ↗</a>':'')+'</p>').join('')||'<p>Nada ainda.</p>'}</div>`;
   $('apPrivacy').value=ap.privacy||'private';
   bind('saveGemini',async()=>{await api('/api/youtube-key',{name:'gemini',key:$('geminiKey').value.trim()});notify('Chave do Gemini salva.');showPilot(t);});
+  bind('saveGroq',async()=>{await api('/api/youtube-key',{name:'groq',key:$('groqKey').value.trim()});notify('Chave do Groq salva.');showPilot(t);});
   $('oauthFile').onchange=action(async e=>{if(!e.target.files.length)return;const f=new FormData();f.append('file',e.target.files[0]);await api('/api/oauth-client',f);notify('Arquivo de permissão salvo.');showPilot(t);});
   bind('ytConnect',async()=>{const r=await api('/api/templates/'+t.id+'/youtube/connect',{});window.open(r.url,'_blank');notify('Autorize na aba do Google e depois volte aqui.');
     const until=Date.now()+300000;const tick=setInterval(async()=>{await refresh();const nt=state.templates.find(x=>x.id===t.id);if(nt?.youtube_channel||Date.now()>until){clearInterval(tick);if(nt?.youtube_channel)notify('Canal conectado: '+nt.youtube_channel.title);}},4000);});
@@ -151,7 +154,7 @@ async function showPilot(t){
       el.querySelector('strong').textContent=v.title;
       el.querySelector('p').textContent=Math.round(v.score||0)+'× · '+number.format(v.views)+' views · '+v.channel+' · '+v.origin+(v.comp?' · concorrência no Brasil '+v.comp.level:'');
       el.querySelector('a').href=v.url;
-      el.querySelector('button').onclick=action(async()=>{notify('Escrevendo o roteiro com o Gemini…');const x=await api('/api/templates/'+t.id+'/script',{topic:v});await refresh();page('editor');editor(x.project.id);notify('Roteiro pronto. Revise e clique em Salvar e produzir.');});
+      el.querySelector('button').onclick=action(async()=>{notify('Escrevendo o roteiro com a IA…');const x=await api('/api/templates/'+t.id+'/script',{topic:v});await refresh();page('editor');editor(x.project.id);notify('Roteiro pronto. Revise e clique em Salvar e produzir.');});
       list.append(el);}
     if(!r.topics.length)list.innerHTML+='<p>Nenhum tema novo agora.</p>';
   });

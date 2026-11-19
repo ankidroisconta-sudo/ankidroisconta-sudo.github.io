@@ -501,7 +501,7 @@ def youtube(endpoint, params, key):
 
 KEY_DIR = Path(os.environ.get('LOCALAPPDATA', DATA)) / 'EstudioLivre'
 KEY_PATH = KEY_DIR / 'youtube.dpapi'
-KEY_NAMES = ('youtube', 'pexels', 'pixabay', 'gemini')
+KEY_NAMES = ('youtube', 'pexels', 'pixabay', 'gemini', 'groq')
 
 def save_secret(name, value):
     KEY_DIR.mkdir(parents=True, exist_ok=True)
@@ -1259,11 +1259,11 @@ def next_topics(t, key, limit=8, check_competition=False):
 
 def write_script(t, topic):
     """Roteiro original com o Gemini, no estilo e na duração do canal."""
-    gkey = read_key('gemini')
-    if not gkey: raise ValueError('Falta a chave grátis do Gemini (Canais > Piloto automático).')
+    keys = {'groq': read_key('groq'), 'gemini': read_key('gemini')}
+    if not any(keys.values()): raise ValueError('Falta uma chave de IA para o roteiro: Groq (grátis) ou Gemini (Canais > Piloto automático).')
     model = {'title': topic['title'], 'seconds': int(t['minutes'] * 60), 'per_day': topic.get('per_day', '?'), 'tags': topic.get('tags', []),
              'foreign': not looks_portuguese(topic['title'])}
-    data = piloto.gemini_json(build_prompt(t, topic['title'], model), gkey)
+    data = piloto.script_json(build_prompt(t, topic['title'], model), keys)
     if isinstance(data, list): data = data[0]
     if not isinstance(data, dict) or len(data.get('scenes') or []) < 3: raise ValueError('O Gemini devolveu um roteiro sem cenas suficientes.')
     with LOCK:

@@ -73,6 +73,73 @@ def gemini_json(prompt, key, retries=2):
     raise ValueError(last or 'Não foi possível gerar o roteiro.')
 
 
+# ------------------------------------------------------------------ Groq (grátis, sem cartão)
+GROQ = 'https://api.groq.com/openai/v1'
+GROQ_PREFERRED = ('openai/gpt-oss-120b', 'llama-3.3-70b-versatile', 'moonshotai/kimi-k2-instruct', 'openai/gpt-oss-20b')
+
+
+def groq_model(key):
+    if ('groq', key) in _MODEL:
+        return _MODEL[('groq', key)]
+    try:
+        r = requests.get(f'{GROQ}/models', headers={'Authorization': f'Bearer {key}'}, timeout=20)
+        r.raise_for_status()
+        ids = [m['id'] for m in r.json().get('data', []) if m.get('active', True)]
+    except (requests.RequestException, ValueError, KeyError):
+        ids = []
+    pick = next((m for m in GROQ_PREFERRED if m in ids), None)
+    if not pick:
+        text_models = [m for m in ids if not re.search(r'whisper|tts|guard|vision|embed|audio', m)]
+        pick = sorted(text_models, key=lambda m: [int(x) for x in re.findall(r'(\d+)b', m)] or [0])[-1] if text_models else GROQ_PREFERRED[0]
+    _MODEL[('groq', key)] = pick
+    return pick
+
+
+def groq_json(prompt, key, retries=2):
+    model = groq_model(key)
+    body = {'model': model, 'temperature': 0.8, 'response_format': {'type': 'json_object'},
+            'messages': [{'role': 'system', 'content': 'Você é roteirista de YouTube. Responda somente com JSON válido.'},
+                         {'role': 'user', 'content': prompt}]}
+    last = ''
+    for attempt in range(retries + 1):
+        try:
+            r = requests.post(f'{GROQ}/chat/completions', json=body, headers={'Authorization': f'Bearer {key}'}, timeout=180)
+        except requests.RequestException as exc:
+            last = f'Falha de conexão com o Groq: {exc}'
+            time.sleep(5)
+            continue
+        if r.status_code == 429:
+            last = 'Limite grátis do Groq atingido por agora. Tente mais tarde.'
+            time.sleep(30)
+            continue
+        if not r.ok:
+            try:
+                msg = r.json()['error']['message']
+            except Exception:
+                msg = r.text[:300]
+            raise ValueError(f'Groq recusou o pedido: {msg[:300]}')
+        try:
+            text = r.json()['choices'][0]['message']['content']
+            return json.loads(re.sub(r'^```(?:json)?\s*|\s*```$', '', text.strip()))
+        except (KeyError, IndexError, ValueError):
+            last = 'O Groq devolveu um roteiro incompleto.'
+    raise ValueError(last or 'Não foi possível gerar o roteiro.')
+
+
+def script_json(prompt, keys):
+    """Usa a IA que tiver chave: Groq primeiro (grátis), depois Gemini. Se uma falhar, tenta a outra."""
+    errors = []
+    for name, fn in (('groq', groq_json), ('gemini', gemini_json)):
+        if keys.get(name):
+            try:
+                return fn(prompt, keys[name])
+            except ValueError as exc:
+                errors.append(str(exc))
+    if not errors:
+        raise ValueError('Falta uma chave de IA para o roteiro: Groq (grátis em console.groq.com/keys) ou Gemini.')
+    raise ValueError(' | '.join(errors))
+
+
 # ------------------------------------------------------------------ OAuth do YouTube
 
 def client_info(path):
