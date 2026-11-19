@@ -282,6 +282,28 @@ def channel_from_video():
     build_brand(item)
     return jsonify(template=item, created=True)
 
+@app.delete('/api/templates/<tid>')
+def delete_channel(tid):
+    """Apaga um canal. Se ele tiver roteiros/vídeos, só apaga com ?all=1 (apaga tudo junto)."""
+    with LOCK:
+        find('templates', tid)
+        if len(state['templates']) <= 1: raise ValueError('Mantenha pelo menos um canal.')
+        projects = [p for p in state['projects'] if p['template_id'] == tid]
+        ids = {p['id'] for p in projects}
+        jobs = [j for j in state['jobs'] if j['project_id'] in ids or j.get('template_id') == tid]
+        if any(j['status'] in ('queued', 'running') for j in jobs): raise ValueError('Este canal tem um vídeo sendo produzido. Cancele antes de apagar.')
+        if (projects or jobs) and request.args.get('all') != '1':
+            return jsonify(error=f'Este canal tem {len(projects)} roteiro(s) e {len(jobs)} vídeo(s).', needs_all=True,
+                           projects=len(projects), jobs=len(jobs)), 409
+        state['templates'] = [t for t in state['templates'] if t['id'] != tid]
+        state['projects'] = [p for p in state['projects'] if p['id'] not in ids]
+        state['jobs'] = [j for j in state['jobs'] if j not in jobs]
+        persist()
+    for j in jobs:
+        if re.fullmatch('[a-f0-9]{32}', j['id']): shutil.rmtree(DATA / 'renders' / j['id'], ignore_errors=True)
+    for folder in (brand_folder(tid), sales_folder(tid)): shutil.rmtree(folder, ignore_errors=True)
+    return jsonify(ok=True)
+
 @app.post('/api/templates/<tid>/rename')
 def rename_channel(tid):
     with LOCK:
@@ -617,7 +639,8 @@ def translate(text, pair):
     try:
         r = requests.get('https://api.mymemory.translated.net/get', params={'q': text[:200], 'langpair': pair}, timeout=12)
         out = r.json()['responseData']['translatedText'] if r.ok else ''
-        if not out or 'MYMEMORY WARNING' in out.upper(): return ''
+        bad = ('MYMEMORY WARNING', 'LANGUAGE', 'INVALID', 'QUERY LENGTH', 'PLEASE SELECT')
+        if not out or any(b in out.upper() for b in bad): return ''
     except (requests.RequestException, ValueError, KeyError, TypeError):
         return ''
     out = html_unescape(out)

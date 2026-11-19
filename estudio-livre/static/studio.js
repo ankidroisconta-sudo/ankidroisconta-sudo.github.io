@@ -132,6 +132,17 @@ async function saveTemplate(asNew){
 $('moldForm').onsubmit=action(async e=>{e.preventDefault();await saveTemplate(false);});
 $('editMold').onchange=templateForm;
 bind('duplicate',()=>saveTemplate(true));
+bind('deleteChannel',async()=>{
+  const t=currentChannel();if(!t)return;
+  if(!confirm('Apagar o canal “'+t.name+'”? Isso não pode ser desfeito.'))return;
+  const r=await fetch('/api/templates/'+t.id,{method:'DELETE',headers:{'X-Studio-Token':token}});
+  let d={};try{d=await r.json();}catch{}
+  if(r.status===409&&d.needs_all){
+    if(!confirm(d.error+' Apagar o canal junto com todos os roteiros, vídeos, banner e página de vendas dele?'))return;
+    await api('/api/templates/'+t.id+'?all=1',null,'DELETE');
+  }else if(!r.ok)throw Error(d.error||'Não foi possível apagar.');
+  $('editMold').value='';await refresh();$('editMold').value=state.templates[0]?.id||'';templateForm();notify('Canal apagado.');
+});
 async function sendRef(input){
   if(!input.files.length)return;
   const data=new FormData();data.append('file',input.files[0]);
