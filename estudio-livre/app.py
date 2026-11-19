@@ -453,6 +453,10 @@ def research():
             if created and datetime.fromisoformat(created.replace('Z', '+00:00')) >= limit and r['channel_id'] not in seen:
                 unique.append(r); seen.add(r['channel_id'])
         results = unique
+    try: max_subs = int(d.get('max_subs') or 0)
+    except (TypeError, ValueError): max_subs = 0
+    if max_subs > 0:  # canais pequenos: só quem mostra inscritos e está abaixo do limite
+        results = [r for r in results if r['subscribers'] is not None and r['subscribers'] <= max_subs]
     order = d.get('sort', 'per_day')
     keyf = {'score': lambda r: r['score'] if r['score'] is not None else -1, 'views': lambda r: r['views'],
             'engagement': lambda r: r['engagement']}.get(order, lambda r: r['per_day'])

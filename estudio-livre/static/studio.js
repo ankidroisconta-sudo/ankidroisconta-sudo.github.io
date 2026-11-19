@@ -221,10 +221,12 @@ $('hunt').onsubmit=action(async e=>{
   $('search').textContent='Buscando…';
   try {
     const gringa=$('mode').value.startsWith('gringa');
+    const small=$('mode').value==='gringa_small';
     const mode=gringa?($('mode').value==='gringa_shorts'?'shorts':'videos'):$('mode').value;
+    const sort=small?'score':$('sort').value, maxSubs=small?($('maxSubs').value||100000):$('maxSubs').value;
     const region=gringa?'US':$('region').value, language=gringa?'en':$('lang').value;
     lastForeign=region!=='BR'&&region!=='PT';
-    const r=await api('/api/research',{query,key:$('key').value,mode,days:$('days').value,language,region,sort:$('sort').value,category:$('category').value,channel_months:$('months').value});
+    const r=await api('/api/research',{query,key:$('key').value,mode,days:$('days').value,language,region,sort,max_subs:maxSubs,category:$('category').value,channel_months:$('months').value});
     const list=r.results;
     showResults(list,query,r.cached);
     try{localStorage.setItem('studio.last',JSON.stringify({list,query,mode:$('mode').value,days:$('days').value,lang:$('lang').value}));}catch{}
