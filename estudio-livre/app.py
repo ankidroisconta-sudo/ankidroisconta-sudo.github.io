@@ -546,6 +546,60 @@ def competition(query, region, language, key):
     COMPETITION_CACHE[cache_key] = {'at': time.time(), 'data': data}
     return data
 
+POTENTIAL_CACHE = {}
+
+@app.post('/api/channel-potential')
+def channel_potential():
+    """Mede se o canal acerta com frequência (formato repetível) ou teve um viral isolado. Custa ~3 unidades."""
+    d = request.get_json()
+    key = str(d.get('key', '')).strip() or stored_youtube_key() or os.environ.get('YOUTUBE_API_KEY', '')
+    if not key: raise ValueError('Configure a chave do YouTube.')
+    cid = str(d.get('channel_id', ''))
+    if not re.fullmatch(r'UC[\w-]{22}', cid): raise ValueError('Canal inválido.')
+    hit = POTENTIAL_CACHE.get(cid)
+    if hit and time.time() - hit['at'] < 24 * 3600: return jsonify(hit['data'])
+    ch = youtube('channels', {'part': 'snippet,statistics,contentDetails', 'id': cid}, key)
+    if not ch: raise ValueError('Canal não encontrado.')
+    ch = ch[0]
+    uploads = ch['contentDetails']['relatedPlaylists']['uploads']
+    subs = None if ch['statistics'].get('hiddenSubscriberCount') else int(ch['statistics'].get('subscriberCount', 0))
+    items = youtube('playlistItems', {'part': 'contentDetails', 'playlistId': uploads, 'maxResults': 30}, key)
+    ids = ','.join(x['contentDetails']['videoId'] for x in items)
+    vids = youtube('videos', {'part': 'snippet,statistics,contentDetails', 'id': ids}, key) if ids else []
+    now = datetime.now(timezone.utc)
+    rows = []
+    for v in vids:
+        published = datetime.fromisoformat(v['snippet']['publishedAt'].replace('Z', '+00:00'))
+        rows.append({'title': v['snippet']['title'], 'views': int(v.get('statistics', {}).get('viewCount', 0)),
+                     'age': max(1 / 24, (now - published).total_seconds() / 86400), 'published': published,
+                     'seconds': iso_seconds(v.get('contentDetails', {}).get('duration')), 'id': v['id']})
+    rows = [r for r in rows if r['age'] >= 2]  # vídeos com menos de 2 dias ainda não dizem nada
+    if len(rows) < 5:
+        data = {'level': 'Pouco histórico', 'score': None, 'videos': len(rows), 'message': 'O canal tem menos de 5 vídeos com mais de 2 dias. Ainda não dá para saber se o formato se repete.'}
+        POTENTIAL_CACHE[cid] = {'at': time.time(), 'data': data}
+        return jsonify(data)
+    rows.sort(key=lambda r: r['published'], reverse=True)
+    views = sorted(r['views'] for r in rows)
+    median = views[len(views) // 2]
+    base = max(subs or 0, 1000)
+    hits = [r for r in rows if r['views'] >= base]           # passou do tamanho do canal
+    big = [r for r in rows if r['views'] >= 10 * base]       # estourou de verdade
+    recent, older = rows[:10], rows[10:]
+    med = lambda xs: sorted(x['views'] for x in xs)[len(xs) // 2] if xs else 0
+    trend = (med(recent) + 1) / (med(older) + 1) if older else 1
+    span = max(1, (rows[0]['published'] - rows[-1]['published']).days)
+    per_week = round(7 * (len(rows) - 1) / span, 1)
+    hit_rate = len(hits) / len(rows)
+    score = round(100 * (0.45 * hit_rate + 0.25 * min(1, math.log10(median / base + 1) / 1.3)
+                         + 0.15 * min(1, max(0, (trend - .5) / 1.5)) + 0.15 * min(1, len(big) / 5)))
+    level = 'Viral isolado' if score < 30 or len(hits) <= 1 else 'Promissor' if score < 55 else 'Formato que se repete'
+    best = sorted(hits, key=lambda r: r['views'], reverse=True)[:8]
+    data = {'level': level, 'score': score, 'videos': len(rows), 'hits': len(hits), 'big': len(big), 'median': median,
+            'subscribers': subs, 'trend': round(trend, 2), 'per_week': per_week, 'shorts_share': round(sum(r['seconds'] <= 180 for r in rows) / len(rows), 2),
+            'best': [{'title': r['title'], 'views': r['views'], 'url': 'https://www.youtube.com/watch?v=' + r['id']} for r in best]}
+    POTENTIAL_CACHE[cid] = {'at': time.time(), 'data': data}
+    return jsonify(data)
+
 @app.post('/api/competition')
 def competition_check():
     d = request.get_json()
@@ -634,7 +688,12 @@ def research():
     keyf = {'score': lambda r: r['score'] if r['score'] is not None else -1, 'views': lambda r: r['views'],
             'engagement': lambda r: r['engagement']}.get(order, lambda r: r['per_day'])
     results = sorted(results, key=keyf, reverse=True)
-    return jsonify(results=results, cached=cached)
+    # Força do nicho: quantos canais diferentes acertaram (views >= 3x inscritos) nesta busca.
+    winners = {r['channel_id'] for r in results if r['score'] and r['score'] >= 3}
+    small = {r['channel_id'] for r in results if r['score'] and r['score'] >= 3 and (r['subscribers'] or 0) <= 100000}
+    niche = {'channels_winning': len(winners), 'small_channels_winning': len(small),
+             'level': 'Nicho forte' if len(winners) >= 8 else 'Nicho médio' if len(winners) >= 4 else 'Nicho fraco'}
+    return jsonify(results=results, cached=cached, niche=niche)
 
 @app.post('/api/queue')
 def enqueue():

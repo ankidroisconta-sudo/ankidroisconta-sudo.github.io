@@ -249,6 +249,23 @@ async function checkCompetition(r,card){
   r.comp=c;r.opportunity=c.opportunity;paintCompetition(card,c,r);
   try{localStorage.setItem('studio.last',JSON.stringify({list:lastList,query:$('query').value,mode:$('mode').value,days:$('days').value,lang:$('lang').value}));}catch{}
 }
+function paintPotential(card,p){
+  const box=card.querySelector('.pot');box.innerHTML='';
+  const tone=p.level==='Formato que se repete'?'low':p.level==='Promissor'?'mid':'high';
+  const tag=document.createElement('span');tag.className='lvl '+tone;tag.textContent=p.level+(p.score!=null?' · '+p.score+'/100':'');
+  const info=document.createElement('small');
+  info.textContent=p.message||('Acertou '+p.hits+' de '+p.videos+' vídeos · mediana '+number.format(p.median)+' views · '+p.per_week+' vídeo(s)/semana · '+(p.trend>=1.2?'subindo':p.trend<=0.8?'caindo':'estável'));
+  box.append(tag,info);
+  if(p.best?.length>1){
+    const det=document.createElement('details');const sum=document.createElement('summary');sum.textContent='Próximos temas da série ('+p.best.length+' que deram certo)';det.append(sum);
+    for(const b of p.best){const a=document.createElement('a');a.href=b.url;a.target='_blank';a.rel='noreferrer';a.textContent=b.title+' · '+number.format(b.views);det.append(a);}
+    box.append(det);
+  }
+}
+async function checkPotential(r,card){
+  const p=await api('/api/channel-potential',{channel_id:r.channel_id,key:$('key').value});
+  r.pot=p;paintPotential(card,p);
+}
 async function checkTop(n){
   const cards=[...document.querySelectorAll('#results .video-card')].slice(0,n);
   for(const card of cards){const r=lastList[+card.dataset.idx];if(r&&!r.comp){try{await checkCompetition(r,card);}catch(e){notify(e.message);break;}}}
@@ -266,7 +283,7 @@ function showResults(list,query,cached){
     card.className='video-card';
     const ratio=r.score==null?'—':Math.round(r.score).toLocaleString('pt-BR')+'×';
     card.dataset.idx=list.indexOf(r);
-    card.innerHTML='<div class="metrics"><b title="Visualizações por dia">'+safe(number.format(r.per_day??0))+'/dia</b><span title="Views ÷ inscritos">'+safe(ratio)+'</span><span>'+safe(number.format(r.views))+' views</span><span>'+safe(r.subscribers==null?'—':number.format(r.subscribers))+' inscr.</span></div><a class="preview" target="_blank" rel="noreferrer"><img loading="lazy" alt=""><em></em></a><h3></h3><small></small><div class="comp"><span>Concorrência no Brasil: —</span><button class="compBtn">Checar</button></div><button class="make">Criar vídeo original neste tema</button>';
+    card.innerHTML='<div class="metrics"><b title="Visualizações por dia">'+safe(number.format(r.per_day??0))+'/dia</b><span title="Views ÷ inscritos">'+safe(ratio)+'</span><span>'+safe(number.format(r.views))+' views</span><span>'+safe(r.subscribers==null?'—':number.format(r.subscribers))+' inscr.</span></div><a class="preview" target="_blank" rel="noreferrer"><img loading="lazy" alt=""><em></em></a><h3></h3><small></small><div class="comp"><span>Concorrência no Brasil: —</span><button class="compBtn">Checar</button></div><div class="pot"><span>Potencial do canal: —</span><button class="potBtn">Analisar</button></div><button class="make">Criar vídeo original neste tema</button>';
     const link=card.querySelector('a');
     link.href='https://www.youtube.com/watch?v='+encodeURIComponent(r.id);
     link.setAttribute('aria-label','Assistir a '+r.title);
@@ -276,6 +293,8 @@ function showResults(list,query,cached){
     card.querySelector('small').textContent=r.channel+' · '+new Date(r.published).toLocaleDateString('pt-BR')+(r.engagement?' · '+r.engagement+'% engaj.':'');
     card.querySelector('.make').onclick=()=>useAsModel(r);
     card.querySelector('.compBtn').onclick=action(()=>checkCompetition(r,card));
+    card.querySelector('.potBtn').onclick=action(()=>checkPotential(r,card));
+    if(r.pot)paintPotential(card,r.pot);
     if(r.comp)paintCompetition(card,r.comp,r);
     grid.append(card);
   }
@@ -298,6 +317,7 @@ $('hunt').onsubmit=action(async e=>{
     const r=await api('/api/research',{query,key:$('key').value,mode,days:$('days').value,language,region,sort,max_subs:maxSubs,category:$('category').value,channel_months:$('months').value});
     const list=r.results;
     showResults(list,query,r.cached);
+    if(r.niche)$('count').textContent+=' · '+r.niche.level+': '+r.niche.channels_winning+' canais diferentes acertando ('+r.niche.small_channels_winning+' pequenos)';
     try{localStorage.setItem('studio.last',JSON.stringify({list,query,mode:$('mode').value,days:$('days').value,lang:$('lang').value}));}catch{}
   }finally{$('search').disabled=false;$('search').textContent='Caçar';}
 });
