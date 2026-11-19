@@ -307,8 +307,15 @@ def youtube(endpoint, params, key):
     except requests.RequestException:
         raise ValueError('Falha de conexão com o YouTube. Confira a internet e tente novamente.') from None
     if not response.ok:
-        # Do not propagate URLs containing the key to the client or logs.
-        raise ValueError('YouTube recusou a consulta. Verifique a chave, a API ativada, as restrições e a cota no Google Cloud.')
+        # Não repassa URLs nem a chave; só o motivo informado pelo Google.
+        try: reason = response.json()['error']['errors'][0].get('reason', '')
+        except Exception: reason = ''
+        hints = {'quotaExceeded': 'A cota grátis de hoje acabou. Ela renova à meia-noite do horário do Pacífico (por volta de 4h ou 5h no Brasil).',
+                 'forbidden': 'A YouTube Data API v3 não está ativada no projeto desta chave, ou a chave está restrita a outra API. Ative em console.cloud.google.com/apis/library/youtube.googleapis.com.',
+                 'accessNotConfigured': 'Ative a YouTube Data API v3 no projeto desta chave no Google Cloud.',
+                 'keyInvalid': 'Chave inválida. Copie de novo em console.cloud.google.com/apis/credentials.',
+                 'badRequest': 'Chave inválida ou consulta mal formada.'}
+        raise ValueError('YouTube recusou a consulta. ' + hints.get(reason, f'Motivo: {reason or response.status_code}. Verifique a chave, a API ativada, as restrições e a cota.'))
     return response.json().get('items', [])
 
 KEY_DIR = Path(os.environ.get('LOCALAPPDATA', DATA)) / 'EstudioLivre'
