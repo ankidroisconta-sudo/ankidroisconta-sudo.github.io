@@ -14,6 +14,7 @@ import uuid
 import wave
 import zipfile
 import edicao
+import vendas
 import modelagem as model
 from midia import illustrate, load_font, narrate
 from datetime import datetime, timedelta, timezone
@@ -120,7 +121,10 @@ def system():
 
 def clean_template(d):
     result = {k: str(d.get(k, DEFAULT_TEMPLATE.get(k, '')))[:5000] for k in
-              ('name', 'channel', 'niche', 'language', 'instructions', 'voice')}
+              ('name', 'channel', 'niche', 'language', 'instructions', 'voice', 'ebook_name', 'ebook_pitch')}
+    link = str(d.get('ebook_link', '')).strip()[:500]
+    if link and not re.fullmatch(r'https?://[^\s<>"]+', link): raise ValueError('O link do e-book precisa começar com https://')
+    result['ebook_link'] = link
     result['format'] = 'vertical' if d.get('format') == 'vertical' else 'horizontal'
     result['resolution'] = 1080 if int(d.get('resolution', 720)) == 1080 else 720
     result['minutes'] = max(0.2, min(60, float(d.get('minutes', 2))))
@@ -161,6 +165,49 @@ def clean_project(d, template_id):
         'thumbnail_text': str(d.get('thumbnail_text', d.get('title', 'Novo vídeo')))[:120],
         'reference': str(d.get('reference', ''))[:1500], 'template_id': template_id,
         'master': d.get('master') is True, 'scheduled': '', 'scenes': out, 'created': datetime.now(timezone.utc).isoformat()}
+
+def sales_folder(tid):
+    if not re.fullmatch(r'[\w-]{1,64}', tid): raise ValueError('Canal inválido.')
+    return DATA / 'sites' / tid
+
+def channel_videos(tid):
+    ids = {p['id'] for p in state['projects'] if p['template_id'] == tid}
+    return [j['title'] for j in state['jobs'] if j['status'] == 'done' and (j.get('template_id') == tid or j['project_id'] in ids)]
+
+@app.post('/api/templates/<tid>/sales-prompt')
+def sales_prompt(tid):
+    with LOCK:
+        t = find('templates', tid)
+        return jsonify(prompt=vendas.prompt(t.get('channel') or t['name'], t.get('niche', ''), channel_videos(tid)))
+
+@app.post('/api/templates/<tid>/sales')
+def sales(tid):
+    data = vendas.clean(request.get_json())
+    with LOCK:
+        t = find('templates', tid)
+        t['sales'] = data
+        if data['checkout'] and not t.get('ebook_link'): t['ebook_link'] = data['checkout']
+        if not t.get('ebook_name'): t['ebook_name'] = data['ebook_name']
+        persist()
+        vendas.build(sales_folder(tid), data, t.get('channel') or t['name'], t.get('accent', '#ffd84d'))
+    return jsonify(url=f'/canal/{tid}/pagina/')
+
+@app.post('/api/templates/<tid>/sales-cover')
+def sales_cover(tid):
+    with LOCK:
+        t = find('templates', tid)
+        if not t.get('sales'): raise ValueError('Gere a página primeiro.')
+        folder = sales_folder(tid); folder.mkdir(parents=True, exist_ok=True)
+        picture = ImageOps.exif_transpose(Image.open(request.files['file'].stream)).convert('RGB')
+        picture.thumbnail((1400, 1800)); picture.save(folder / 'capa-enviada.jpg', quality=92)
+        vendas.build(folder, t['sales'], t.get('channel') or t['name'], t.get('accent', '#ffd84d'))
+    return jsonify(ok=True)
+
+@app.get('/canal/<tid>/pagina/')
+@app.get('/canal/<tid>/pagina/<name>')
+def sales_page(tid, name='index.html'):
+    if name not in ('index.html', 'capa.jpg', 'site.zip'): return jsonify(error='Arquivo inválido.'), 404
+    return send_from_directory(sales_folder(tid), name, as_attachment=name == 'site.zip')
 
 @app.post('/api/projects')
 def projects():
@@ -286,6 +333,11 @@ def prompt():
             inspiration += (" O vídeo de inspiração é de fora do Brasil e em outro idioma: NÃO traduza. Adapte o tema para o público brasileiro, "
                             "com exemplos, comparações, unidades (reais, quilômetros, °C) e referências que façam sentido no Brasil, "
                             "e confira se os fatos valem para cá.")
+    if t.get('ebook_name'):
+        inspiration += (f"\nO canal vende o e-book '{t['ebook_name']}'" + (f" ({t['ebook_pitch']})" if t.get('ebook_pitch') else '') +
+                        ". O vídeo deve entregar valor real por si só e funcionar como uma amostra grátis do e-book. "
+                        "Inclua uma chamada natural no meio (depois de um ponto alto, prometendo que o melhor ainda vem) e outra no final, "
+                        "dizendo que o link está no comentário fixado. Não exagere nas promessas.")
     if d.get('reference'):
         _,profile=reference_profile(d['reference'])
         guide='Siga a ordem e os tempos do modelo. Duração total: '+str(round(profile['duracao'],2))+' segundos. Ignore a duração do molde do canal. Planos (segundos): '+json.dumps([(round(x['inicio'],2),round(x['fim'],2),x['tipo']) for x in profile['planos']],ensure_ascii=False)
@@ -498,7 +550,7 @@ def enqueue():
             snapshots.append((p, t))
         jobs = []
         for p, t in snapshots:
-            job = {'id': ident(), 'project_id': p['id'], 'title': p['title'], 'status': 'queued',
+            job = {'id': ident(), 'project_id': p['id'], 'template_id': t['id'], 'title': p['title'], 'status': 'queued',
                    'message': 'Na fila', 'progress': 0, 'created': datetime.now(timezone.utc).isoformat()}
             state['jobs'].append(job); jobs.append((job['id'], p, t))
         persist()
@@ -746,7 +798,10 @@ def finish(jid, p, t, folder, srt, media_log, profile, cover, offset):
     (folder/'modelo.json').write_text(json.dumps(profile,indent=2,ensure_ascii=False),'utf8')
     (folder/'legendas.srt').write_text('\n'.join(srt), 'utf-8')
     (folder/'projeto.json').write_text(json.dumps({'project': p, 'template': t}, ensure_ascii=False, indent=2), 'utf-8')
-    (folder/'publicacao.txt').write_text(f"TÍTULO\n{p['title']}\n\nDESCRIÇÃO\n{p['description']}\n\nTAGS\n{', '.join(p['tags'])}\n\nDATA PLANEJADA (não publicada automaticamente)\n{p['scheduled']}\n", 'utf-8')
+    pinned = ''
+    if t.get('ebook_name'):
+        pinned = f"\nCOMENTÁRIO FIXADO\n📘 {t['ebook_name']}" + (f": {t['ebook_pitch']}" if t.get('ebook_pitch') else '') + (f"\n👉 {t['ebook_link']}" if t.get('ebook_link') else '\n👉 (coloque o link do e-book)') + "\n"
+    (folder/'publicacao.txt').write_text(f"CANAL\n{t.get('channel') or t.get('name')}\n\nTÍTULO\n{p['title']}\n\nDESCRIÇÃO\n{p['description']}\n" + (f"\n{t['ebook_name']}: {t['ebook_link']}\n" if t.get('ebook_link') else '') + f"\nTAGS\n{', '.join(p['tags'])}\n{pinned}\nDATA PLANEJADA (não publicada automaticamente)\n{p['scheduled']}\n", 'utf-8')
     credits = '\n\n'.join('\n'.join(f'{k}: {v}' for k,v in entry.items() if v not in ('', None)) for entry in media_log)
     (folder/'creditos.txt').write_text(credits, 'utf-8')
     with (folder/'publicacao.txt').open('a',encoding='utf-8') as publication:

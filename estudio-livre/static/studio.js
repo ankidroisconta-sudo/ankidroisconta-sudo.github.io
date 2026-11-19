@@ -43,6 +43,7 @@ async function refresh(){
     select.replaceChildren(...state.templates.map(t=>new Option(t.name,t.id)));
     if(state.templates.some(t=>t.id===previous))select.value=previous;
   }
+  const current=state.templates.find(t=>t.id===$('editMold').value);if(current){showMoldCards();showChannelVideos(current);}
   $('library').innerHTML=state.projects.length?'':'<p>Seus roteiros salvos aparecerão aqui.</p>';
   for(const p of [...state.projects].reverse()){
     const row=document.createElement('div');row.className='item';
@@ -63,6 +64,41 @@ function templateForm(){
   showMoldCards();
   const t=state.templates.find(t=>t.id===$('editMold').value);
   for(const input of $('moldForm').elements)if(input.name)input.value=t[input.name] ?? input.options?.[0]?.value ?? '';
+  showChannelVideos(t);
+}
+function jobTemplate(j){return j.template_id||state.projects.find(p=>p.id===j.project_id)?.template_id;}
+function showSales(t){
+  const has=!!t.sales, base='/canal/'+t.id+'/pagina/';
+  $('salesOpen').hidden=$('salesZip').hidden=!has;$('salesOpen').href=base;$('salesZip').href=base+'site.zip';
+  $('salesStatus').textContent=has?('Página pronta: '+t.sales.ebook_name+' · R$ '+t.sales.price+'. Para editar, cole um JSON novo e gere de novo.'):'Gere a página do e-book deste canal: capa, promessa, preço, capítulos, trechos, dúvidas e garantia.';
+  $('salesJson').value=has?JSON.stringify(t.sales,null,1):'';
+}
+function currentChannel(){return state.templates.find(t=>t.id===$('editMold').value);}
+bind('salesPrompt',async()=>{const r=await api('/api/templates/'+currentChannel().id+'/sales-prompt',{});$('salesPromptText').value=r.prompt;$('salesPromptBox').hidden=false;});
+bind('salesCopy',async()=>{await navigator.clipboard.writeText($('salesPromptText').value);notify('Prompt copiado.');});
+bind('salesBuild',async()=>{
+  const raw=$('salesJson').value.trim().replace(/^\x60\x60\x60(?:json)?\s*/i,'').replace(/\s*\x60\x60\x60$/,'');
+  let data;try{data=JSON.parse(raw);}catch{throw Error('JSON incompleto. Copie a resposta inteira do chat.');}
+  const r=await api('/api/templates/'+currentChannel().id+'/sales',data);await refresh();notify('Página gerada.');window.open(r.url,'_blank');
+});
+$('salesCover').onchange=action(async e=>{if(!e.target.files.length)return;const f=new FormData();f.append('file',e.target.files[0]);await api('/api/templates/'+currentChannel().id+'/sales-cover',f);notify('Capa atualizada.');});
+function showChannelVideos(t){
+  showSales(t);
+  $('channelTitle').textContent='Vídeos do canal '+(t.channel||t.name);
+  const box=$('channelVideos');box.replaceChildren();
+  const done=state.jobs.filter(j=>j.status==='done'&&jobTemplate(j)===t.id).reverse();
+  const pending=state.projects.filter(p=>p.template_id===t.id&&!state.jobs.some(j=>j.project_id===p.id&&j.status==='done'));
+  if(!done.length&&!pending.length){box.innerHTML='<p>Nenhum vídeo neste canal ainda. Em Ideias, escolha um tema e crie o roteiro com este canal selecionado.</p>';return;}
+  for(const j of done){
+    const url='/files/'+j.id+'/', el=document.createElement('div');el.className='item';
+    el.innerHTML='<strong>'+safe(j.title)+'</strong><p>'+safe(j.message)+'</p><video controls preload="none" poster="'+url+'thumbnail.jpg" src="'+url+'video.mp4"></video><div class="row"><a href="'+url+'pacote.zip?download=1">Baixar pacote</a><a href="'+url+'publicacao.txt" target="_blank">Título, descrição e comentário fixado</a></div>';
+    box.append(el);
+  }
+  for(const p of pending){
+    const el=document.createElement('div');el.className='item';
+    el.innerHTML='<strong>'+safe(p.title)+'</strong><p>Roteiro salvo · ainda não produzido</p><button>Abrir roteiro</button>';
+    el.querySelector('button').onclick=()=>{page('editor');editor(p.id);};box.append(el);
+  }
 }
 async function saveTemplate(asNew){
   const form=$('moldForm');
@@ -70,7 +106,7 @@ async function saveTemplate(asNew){
   const d=Object.fromEntries(new FormData(form));
   if(!asNew)d.id=$('editMold').value;
   const result=await api('/api/templates',d);
-  await refresh();$('editMold').value=result.id;templateForm();notify('Molde salvo.');
+  await refresh();$('editMold').value=result.id;templateForm();notify('Canal salvo.');
 }
 $('moldForm').onsubmit=action(async e=>{e.preventDefault();await saveTemplate(false);});
 $('editMold').onchange=templateForm;
@@ -245,8 +281,10 @@ function showMoldCards(){
   for(const t of state.templates){
     const card=document.createElement('button');card.className='mold-card';card.setAttribute('aria-pressed',String(t.id===$('editMold').value));
     const mark=document.createElement('i');mark.style.background=t.accent;mark.textContent=(t.channel||t.name||'M').charAt(0).toUpperCase();
-    const name=document.createElement('strong');name.textContent=t.name;
-    card.append(mark,name);card.onclick=()=>{$('editMold').value=t.id;templateForm();};
+    const name=document.createElement('strong');name.textContent=t.channel||t.name;
+    const count=state.jobs.filter(j=>j.status==='done'&&jobTemplate(j)===t.id).length;
+    const info=document.createElement('small');info.textContent=(t.niche||'')+' · '+(t.format==='vertical'?'Shorts':'Longo')+' · '+count+' vídeo(s)';
+    card.append(mark,name,info);card.onclick=()=>{$('editMold').value=t.id;templateForm();};
     box.append(card);
   }
 }

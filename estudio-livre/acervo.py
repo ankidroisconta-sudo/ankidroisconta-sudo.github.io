@@ -31,6 +31,12 @@ def relevant(title, query):
     return bool(wanted) and hits >= (len(wanted) if len(wanted) <= 2 else -(-2 * len(wanted) // 3))
 
 
+def tagged(tags, query):
+    """Pixabay devolve resultados soltos; exige que alguma palavra da busca esteja nas etiquetas."""
+    tags = tags.lower()
+    return any(w[:5] in tags for w in words(query))
+
+
 def secret(name):
     """Chave gratuita do usuário: variável de ambiente ou arquivo protegido do Windows."""
     value = os.environ.get(name.upper() + '_API_KEY', '').strip()
@@ -104,7 +110,7 @@ def pixabay(query, vertical, want_video):
         r.raise_for_status()
         out = []
         for h in r.json().get('hits', []):
-            if BAD_TAGS.search(h.get('tags', '')):
+            if BAD_TAGS.search(h.get('tags', '')) or not tagged(h.get('tags', ''), query):
                 continue
             sizes = h.get('videos', {})
             pick = next((sizes[s] for s in ('large', 'medium', 'small') if sizes.get(s, {}).get('url')), None)
@@ -118,7 +124,7 @@ def pixabay(query, vertical, want_video):
     r.raise_for_status()
     return [dict(kind='imagem', url=h['largeImageURL'], origin=h['pageURL'],
                  credit=dict(obra=h['pageURL'], autor=h.get('user', ''), licença='Licença Pixabay', fonte=h['pageURL']))
-            for h in r.json().get('hits', [])]
+            for h in r.json().get('hits', []) if tagged(h.get('tags', ''), query)]
 
 
 def wikimedia(query, vertical, want_video):
