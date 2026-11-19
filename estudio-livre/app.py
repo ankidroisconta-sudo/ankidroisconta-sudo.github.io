@@ -132,6 +132,8 @@ def clean_template(d):
     result['music'] = 'nenhuma' if d.get('music') == 'nenhuma' else 'ambiente'
     result['accent'] = d.get('accent', '#ffd84d')
     if not re.fullmatch(r'#[0-9a-fA-F]{6}', result['accent']): raise ValueError('Cor inválida.')
+    if result['accent'].lower() == '#ffd84d':  # sem cor escolhida: usa a cor do nicho (ex.: verde em finanças)
+        result['accent'] = vendas.theme_for(' '.join([result['niche'], result['channel'], result['name']]))['accent']
     return result
 
 @app.post('/api/templates')
