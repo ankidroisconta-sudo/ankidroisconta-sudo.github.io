@@ -265,7 +265,7 @@ function editor(id){
   p.scenes.forEach((s,i)=>{
     const el=document.createElement('div');el.className='scene';
     el.innerHTML='<strong>Cena '+(i+1)+'</strong>'+field('Narração','text',s.text,true)+field('Texto na tela','caption',s.caption)+field('Referência visual','visual',s.visual)+'<div class="row"><label>Imagem para plano estático '+(s.image?'· anexada':'')+'<input type="file" accept="image/*" data-kind="image"></label><label>Narração automática · substituir '+(s.audio?'· anexado':'')+'<input type="file" accept=".wav,.m4a,.mp3,.ogg" data-kind="audio"></label></div>';
-    const medium=document.createElement('label');medium.innerHTML='Sem referência, usar <select data-key="media"><option value="auto">Escolha automática</option><option value="video">Clipe de vídeo</option><option value="imagem">Imagem</option><option value="animacao">Animação gráfica (texto e números)</option></select>';medium.querySelector('select').value=s.media||'auto';el.append(medium);
+    const medium=document.createElement('label');medium.innerHTML='Sem referência, usar <select data-key="media"><option value="auto">Escolha automática</option><option value="video">Clipe de vídeo</option><option value="imagem">Imagem</option></select>';medium.querySelector('select').value=s.media||'auto';el.append(medium);
     const clip=document.createElement('label');clip.innerHTML='Clipe de vídeo '+(s.video?'· anexado':'· opcional')+'<input type="file" accept="video/*" data-kind="video">';el.append(clip);
     el.querySelectorAll('[type=file]').forEach(input=>input.onchange=action(async()=>{
       if(!input.files.length)return;

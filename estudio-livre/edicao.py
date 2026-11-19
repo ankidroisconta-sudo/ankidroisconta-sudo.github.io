@@ -292,7 +292,10 @@ def montar(p, t, folder, wavs, durations, size, data_dir, card, progress):
         out = folder / f'parte-{n:04}.mp4'
         source, kind, credit = None, None, None
 
-        animated = scene.get('media') == 'animacao' or (shot['k'] == 0 and motion.find_number(scene.get('caption', '')))
+        use_motion = t.get('animations') == 'sim'
+        animated = use_motion and (scene.get('media') == 'animacao' or (shot['k'] == 0 and motion.find_number(scene.get('caption', ''))))
+        if scene.get('media') == 'animacao' and not use_motion:
+            scene = dict(scene, media='auto', visual=scene.get('visual') or scene.get('caption', ''))
         if animated:
             try:
                 motion.render(scene, size, seconds, t.get('accent', '#ffd84d'), t.get('channel', ''), n, out)
@@ -343,7 +346,11 @@ def montar(p, t, folder, wavs, durations, size, data_dir, card, progress):
                     continue
         if source is None and downloaded.get(i):  # reaproveita mídia desta cena com outro movimento
             source, kind, credit = downloaded[i][n % len(downloaded[i])]
-        if source is None:  # nada encontrado: cena animada gerada por código
+        if source is None and not use_motion:  # sem animação: reaproveita a mídia mais próxima do vídeo
+            nearby = [m for k in sorted(downloaded, key=lambda k: abs(k - i)) for m in downloaded[k]]
+            if nearby:
+                source, kind, credit = nearby[n % len(nearby)]
+        if source is None and use_motion:  # nada encontrado: cena animada gerada por código
             try:
                 motion.render(scene, size, seconds, t.get('accent', '#ffd84d'), t.get('channel', ''), n, out)
                 files.append(out)
@@ -352,9 +359,11 @@ def montar(p, t, folder, wavs, durations, size, data_dir, card, progress):
                                 tipo='animacao', fonte='Animação gerada no Estúdio Livre'))
                 continue
             except Exception:
-                source = folder / f'cartao-{n:04}.jpg'
-                card(source, scene, size)
-                kind, credit = 'imagem', {'fonte': 'Cartão gráfico do Estúdio Livre'}
+                pass
+        if source is None:  # último recurso: fundo na cor do canal, sem texto
+            source = folder / f'cartao-{n:04}.jpg'
+            card(source, scene, size)
+            kind, credit = 'imagem', {'fonte': 'Cartão gráfico do Estúdio Livre'}
         try:
             if kind == 'video':
                 video_shot(source, size, seconds, n, out)

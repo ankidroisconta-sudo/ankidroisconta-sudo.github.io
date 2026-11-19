@@ -145,6 +145,7 @@ def clean_template(d):
     result['minutes'] = max(0.2, min(60, float(d.get('minutes', 2))))
     result['captions'] = 'nenhuma' if d.get('captions') == 'nenhuma' else 'dinamica'
     result['music'] = 'nenhuma' if d.get('music') == 'nenhuma' else 'ambiente'
+    result['animations'] = 'sim' if d.get('animations') == 'sim' else 'nao'
     result['accent'] = d.get('accent', '#ffd84d')
     if not re.fullmatch(r'#[0-9a-fA-F]{6}', result['accent']): raise ValueError('Cor inválida.')
     if result['accent'].lower() == '#ffd84d':  # sem cor escolhida: usa a cor do nicho (ex.: verde em finanças)
@@ -470,13 +471,16 @@ def build_prompt(t, idea, model=None, reference=''):
     if d.get('reference'):
         _,profile=reference_profile(d['reference'])
         guide='Siga a ordem e os tempos do modelo. Duração total: '+str(round(profile['duracao'],2))+' segundos. Ignore a duração do molde do canal. Planos (segundos): '+json.dumps([(round(x['inicio'],2),round(x['fim'],2),x['tipo']) for x in profile['planos']],ensure_ascii=False)
+    media_rule = ("Inclua media com valor video, imagem ou animacao (animacao = tipografia animada gerada por código, ideal para números; nesse caso coloque o número no caption). Prefira video."
+                  if t.get('animations') == 'sim' else
+                  "Inclua media com valor video ou imagem (prefira video). Toda cena precisa de um visual concreto e filmável, inclusive as que falam de números: mostre o objeto ou a situação, não o número.")
     return (f'''Crie um roteiro ORIGINAL sobre: {str(d.get('idea', ''))[:4000]}.
 Canal: {t['channel']}. Nicho: {t['niche']}. Idioma: {t['language']}.
 Duração pretendida: {minutes} minutos, aproximadamente {round(minutes * 145)} palavras.{inspiration}
 Orientações editoriais: {t['instructions']}
 {guide} Não copie falas ou thumbnails de referências.
 Não invente fatos, métricas ou fontes. Indique na descrição os fatos que ainda precisam de checagem.
-Para cada cena escreva text (narração), caption (até 100 caracteres) e visual: 2 a 4 buscas curtas EM INGLÊS separadas por vírgula, cada uma descrevendo uma tomada diferente e concreta que existiria em banco de vídeos (ex.: 'chef cutting vegetables, steam rising from pan, close up spices'). Evite nomes próprios e conceitos abstratos no visual. Inclua media com valor video, imagem ou animacao (animacao = tipografia animada gerada por código, ideal para números, listas e conceitos abstratos; nesse caso coloque o número ou a ideia-chave no caption). Prefira video.
+Para cada cena escreva text (narração), caption (até 100 caracteres) e visual: 2 a 4 buscas curtas EM INGLÊS separadas por vírgula, cada uma descrevendo uma tomada diferente e concreta que existiria em banco de vídeos (ex.: 'chef cutting vegetables, steam rising from pan, close up spices'). Evite nomes próprios e conceitos abstratos no visual. {media_rule}
 Crie também um título curioso e honesto (até 70 caracteres, sem clickbait enganoso), thumbnail_text com até 5 palavras e uma descrição com 2 a 3 frases e as fontes.
 Retorne SOMENTE um objeto JSON válido neste formato, sem markdown:
 {json.dumps(example, ensure_ascii=False)}''')
