@@ -15,6 +15,7 @@ import uuid
 import wave
 import zipfile
 import edicao
+import marca
 import vendas
 import modelagem as model
 from midia import illustrate, load_font, narrate
@@ -223,6 +224,89 @@ def sales_cover(tid):
 def sales_page(tid, name='index.html'):
     if name not in ('index.html', 'capa.jpg', 'site.zip'): return jsonify(error='Arquivo inválido.'), 404
     return send_from_directory(sales_folder(tid), name, as_attachment=name == 'site.zip')
+
+def brand_folder(tid):
+    if not re.fullmatch(r'[\w-]{1,64}', tid): raise ValueError('Canal inválido.')
+    return DATA / 'canais' / tid
+
+def build_brand(t):
+    folder = brand_folder(t['id']); folder.mkdir(parents=True, exist_ok=True)
+    mode = vendas.theme_for(' '.join([t.get('niche', ''), t.get('name', '')]), t.get('accent'))['mode']
+    seed = (t.get('source') or {}).get('channel_id') or t['id']
+    marca.avatar(folder / 'perfil.jpg', t.get('channel') or t['name'], t.get('accent', '#ffd84d'), mode, seed)
+    marca.banner(folder / 'banner.jpg', t.get('channel') or t['name'], t.get('niche', ''), t.get('accent', '#ffd84d'), mode, seed)
+
+def source_channel(cid, key):
+    if not key or not re.fullmatch(r'UC[\w-]{22}', cid or ''): return {'id': cid}
+    try:
+        ch = youtube('channels', {'part': 'snippet,brandingSettings', 'id': cid}, key)
+    except ValueError:
+        return {'id': cid}
+    if not ch: return {'id': cid}
+    sn = ch[0].get('snippet', {})
+    return {'id': cid, 'title': sn.get('title', ''), 'description': sn.get('description', '')[:600],
+            'keywords': ch[0].get('brandingSettings', {}).get('channel', {}).get('keywords', '')[:300]}
+
+def channel_topic(video, source, query=''):
+    """Tema em português para nomear canais de qualquer assunto. Prioridade: o que a pessoa digitou na busca."""
+    query = re.sub(r'\s+', ' ', query or '').strip()
+    if query and looks_portuguese(query):
+        return ' '.join(query.split()[:3]).lower()
+    tags = [t for t in (video.get('tags') or []) if 2 < len(t) < 30 and not t.startswith('#')]
+    base = tags[0] if tags else topic_terms(video.get('title', ''), 3)
+    if not base: base = topic_terms(source.get('title', ''), 2)
+    if base and not looks_portuguese(base):
+        base = to_portuguese(base)  # sem tradução: melhor um nome genérico em português do que um nome em inglês
+    return ' '.join((base or '').split()[:3]).strip(' .!?').lower()
+
+@app.post('/api/channel-from-video')
+def channel_from_video():
+    """Cria (ou reaproveita) um canal inspirado no canal do vídeo escolhido, com identidade completa."""
+    d = request.get_json()
+    video = d.get('video') or {}
+    key = str(d.get('key', '')).strip() or stored_youtube_key() or os.environ.get('YOUTUBE_API_KEY', '')
+    cid = str(video.get('channel_id', ''))
+    with LOCK:
+        existing = next((t for t in state['templates'] if cid and (t.get('source') or {}).get('channel_id') == cid), None)
+    if existing:
+        return jsonify(template=existing, created=False)
+    source = source_channel(cid, key)
+    topic = channel_topic(video, source, str(d.get('query', '')))
+    with LOCK:
+        taken = [t.get('name', '') for t in state['templates']] + [t.get('channel', '') for t in state['templates']]
+        plan = marca.channel_plan(video, source, taken, topic=topic)
+        item = clean_template(plan)
+        item.update(id=ident(), about=plan['about'], footer=plan['footer'], theme=plan['theme'], source=plan['source'], topic=topic)
+        state['templates'].append(item)
+        persist()
+    build_brand(item)
+    return jsonify(template=item, created=True)
+
+@app.post('/api/templates/<tid>/rename')
+def rename_channel(tid):
+    with LOCK:
+        t = find('templates', tid)
+        t['name_skip'] = int(t.get('name_skip', 0)) + 1
+        taken = [x.get('name', '') for x in state['templates'] if x['id'] != tid]
+        key = t.get('theme', '') if t.get('theme') != 'geral' else ''
+        seed = (t.get('source') or {}).get('channel_id') or tid
+        name = marca.suggest_name(key, taken + [t.get('name', '')], seed, t['name_skip'], '' if key else t.get('topic', ''))
+        old = t.get('channel') or t['name']
+        t.update(name=name, channel=name)
+        for k in ('about', 'footer'):
+            if t.get(k): t[k] = t[k].replace(old, name)
+        persist()
+    build_brand(t)
+    return jsonify(template=t)
+
+@app.get('/canal/<tid>/marca/<name>')
+def brand_file(tid, name):
+    if name not in ('perfil.jpg', 'banner.jpg'): return jsonify(error='Arquivo inválido.'), 404
+    folder = brand_folder(tid)
+    if not (folder / name).is_file():
+        with LOCK: t = find('templates', tid)
+        build_brand(t)
+    return send_from_directory(folder, name, as_attachment=request.args.get('download') == '1')
 
 @app.post('/api/projects')
 def projects():
@@ -494,9 +578,19 @@ seu sua meu minha nunca mais muito pode é foi ser shorts short facts fact video
 
 PT_HINTS = set('de do da dos das que como por para não nao com sem uma um os as no na nos nas mais muito história historia curiosidades dinheiro saúde saude receitas cachorro gato plantas mistérios misterios'.split())
 
+EN_HINTS = set("""the of and to in for with how why what when who is are was were you your my best top facts fact history money
+air fryer dog dogs cat cats car cars old new life story stories secret secrets world science space easy tips hacks recipe recipes
+garden plants home make made never ever things people that this from about most more""".split())
+
 def looks_portuguese(text):
-    words = set(re.findall(r'\w+', text.lower()))
-    return bool(re.search(r'[ãõçáéíóúâêô]', text.lower())) or len(words & PT_HINTS) >= 1
+    """Decide se a busca está em português comparando sinais das duas línguas."""
+    low = text.lower()
+    words = re.findall(r'[\w-]+', low)
+    if not words: return False
+    if re.search(r'[ãõçáéíóúâêô]', low): return True
+    pt = sum(w in PT_HINTS for w in words) * 2 + sum(bool(re.search(r'(os|as|ção|ções|mente|inho|inha|eiro|eira|ade|agem|ão|ia|ica|ico|ega|ego)$', w)) for w in words)
+    en = sum(w in EN_HINTS for w in words) * 2 + sum(bool(re.search(r'(ing|tion|ness|ly|ful|ship|th|ck|ed)$', w)) for w in words)
+    return pt > en
 
 def plainword(text):
     import unicodedata
@@ -999,7 +1093,7 @@ def finish(jid, p, t, folder, srt, media_log, profile, cover, offset):
     pinned = ''
     if t.get('ebook_name'):
         pinned = f"\nCOMENTÁRIO FIXADO\n📘 {t['ebook_name']}" + (f": {t['ebook_pitch']}" if t.get('ebook_pitch') else '') + (f"\n👉 {t['ebook_link']}" if t.get('ebook_link') else '\n👉 (coloque o link do e-book)') + "\n"
-    (folder/'publicacao.txt').write_text(f"CANAL\n{t.get('channel') or t.get('name')}\n\nTÍTULO\n{p['title']}\n\nDESCRIÇÃO\n{p['description']}\n" + (f"\n{t['ebook_name']}: {t['ebook_link']}\n" if t.get('ebook_link') else '') + f"\nTAGS\n{', '.join(p['tags'])}\n{pinned}\nDATA PLANEJADA (não publicada automaticamente)\n{p['scheduled']}\n", 'utf-8')
+    (folder/'publicacao.txt').write_text(f"CANAL\n{t.get('channel') or t.get('name')}\n\nTÍTULO\n{p['title']}\n\nDESCRIÇÃO\n{p['description']}\n" + (f"\n{t['ebook_name']}: {t['ebook_link']}\n" if t.get('ebook_link') else '') + (f"\n{t['footer']}\n" if t.get('footer') else '') + f"\nTAGS\n{', '.join(p['tags'])}\n{pinned}\nDATA PLANEJADA (não publicada automaticamente)\n{p['scheduled']}\n", 'utf-8')
     credits = '\n\n'.join('\n'.join(f'{k}: {v}' for k,v in entry.items() if v not in ('', None)) for entry in media_log)
     (folder/'creditos.txt').write_text(credits, 'utf-8')
     with (folder/'publicacao.txt').open('a',encoding='utf-8') as publication:

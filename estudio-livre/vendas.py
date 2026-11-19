@@ -102,30 +102,37 @@ ICONS = {
 }
 
 THEMES = {
-    'financas': dict(words='dívida divida dinheiro cartão cartao finan invest crédito credito renda nome limpo serasa salário economia orçamento poupar', mode='dark',
+    'financas': dict(words='dívida divida dinheiro cartão cartao finan invest crédito credito renda nome limpo serasa salário economia orçamento poupar money debt credit rich salary budget dinero deuda ahorro', mode='dark',
                      accent='#2bd673', head='impact', glyph='$', icons=['wallet', 'card', 'chart', 'coin', 'message']),
-    'plantas': dict(words='horta jardim planta vaso pomar cultivo semente flor orgân', mode='light', accent='#3f8f3a', head='serif', glyph='✿',
+    'plantas': dict(words='horta jardim planta vaso pomar cultivo semente flor orgân garden plant gardening pots fruit trees jardín huerto', mode='light', accent='#3f8f3a', head='serif', glyph='✿',
                     icons=['sprout', 'leaf', 'sun', 'drop', 'check']),
-    'pets': dict(words='cão cao cachorro gato pet adestr filhote raça', mode='light', accent='#e0782b', head='impact', glyph='●',
+    'pets': dict(words='cão cao cachorro gato pet adestr filhote raça dogs cats puppy breeds perro', mode='light', accent='#e0782b', head='impact', glyph='●',
                  icons=['paw', 'heart', 'clock', 'check', 'star']),
-    'mente': dict(words='estoic ansied psicolog mente hábito habito produtiv foco medit emocional', mode='dark', accent='#8ab4ff', head='serif', glyph='·',
+    'mente': dict(words='estoic ansied psicolog mente hábito habito produtiv foco medit emocional stoic psycholog anxiety habits psicolog', mode='dark', accent='#8ab4ff', head='serif', glyph='·',
                   icons=['brain', 'eye', 'clock', 'bolt', 'book']),
-    'historia': dict(words='históri histori arte pintur mistéri misteri mitolog segredo enigma antig', mode='dark', accent='#e02424', head='impact', glyph='✶',
+    'historia': dict(words='históri histori arte pintur mistéri misteri mitolog segredo enigma antig history ancient medieval kings pope wars painting mystery myths', mode='dark', accent='#e02424', head='impact', glyph='✶',
                      icons=['eye', 'scroll', 'book', 'flame', 'star']),
-    'culinaria': dict(words='receita air fryer cozinha culinár doce bolo comida', mode='light', accent='#d9481c', head='impact', glyph='✱',
+    'culinaria': dict(words='receita air fryer cozinha culinár doce bolo comida recipe cooking kitchen receta cocina', mode='light', accent='#d9481c', head='impact', glyph='✱',
                       icons=['flame', 'clock', 'check', 'book', 'heart']),
+    'ciencia': dict(words='universo espaço espaco planeta galáxia galaxia estrela cosmos ciência ciencia física fisica terra buraco negro universe space planet galaxy stars science physics black hole nasa espacio', mode='dark',
+                    accent='#7c9cff', head='impact', glyph='✦', icons=['star', 'eye', 'bolt', 'clock', 'book']),
 }
 DEFAULT_THEME = dict(mode='dark', accent='#ffd84d', head='impact', glyph='★', icons=['book', 'check', 'bolt', 'star', 'clock'])
 
 
-def theme_for(text, accent=None):
+def theme_key(text):
     text = text.lower()
-    best, score = DEFAULT_THEME, 0
-    for t in THEMES.values():
+    best, score = '', 0
+    for key, t in THEMES.items():
         n = sum(w in text for w in t['words'].split())
         if n > score:
-            best, score = t, n
-    out = dict(best)
+            best, score = key, n
+    return best
+
+
+def theme_for(text, accent=None):
+    key = theme_key(text)
+    out = dict(THEMES[key] if key else DEFAULT_THEME)
     if accent and accent.lower() != '#ffd84d':  # a cor escolhida no canal manda
         out['accent'] = accent
     return out

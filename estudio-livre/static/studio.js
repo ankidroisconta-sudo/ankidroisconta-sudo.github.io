@@ -90,7 +90,20 @@ bind('salesBuild',async()=>{
   const r=await api('/api/templates/'+currentChannel().id+'/sales',data);await refresh();notify('Página gerada.');window.open(r.url,'_blank');
 });
 $('salesCover').onchange=action(async e=>{if(!e.target.files.length)return;const f=new FormData();f.append('file',e.target.files[0]);await api('/api/templates/'+currentChannel().id+'/sales-cover',f);notify('Capa atualizada.');});
+function showBrand(t){
+  const box=$('brandBox');box.replaceChildren();
+  const base='/canal/'+t.id+'/marca/', v='?v='+encodeURIComponent(t.name);
+  const imgs=document.createElement('div');imgs.className='brand-imgs';
+  imgs.innerHTML='<img class="brand-avatar" alt="Foto de perfil do canal"><img class="brand-banner" alt="Banner do canal">';
+  imgs.querySelector('.brand-avatar').src=base+'perfil.jpg'+v;imgs.querySelector('.brand-banner').src=base+'banner.jpg'+v;
+  const info=document.createElement('div');
+  const src=t.source?.title?'<p>Inspirado em: '+safe(t.source.title)+(t.source.video_title?' · vídeo “'+safe(t.source.video_title)+'”':'')+'</p>':'';
+  info.innerHTML='<p><strong>'+safe(t.name)+'</strong> · '+safe(t.niche||'')+'</p>'+src+(t.about?'<label>Texto do “Sobre” do canal<textarea readonly rows="3">'+safe(t.about)+'</textarea></label>':'')+'<div class="row"><a href="'+base+'perfil.jpg?download=1">Baixar foto de perfil</a><a href="'+base+'banner.jpg?download=1">Baixar banner</a><button id="renameChannel">Sugerir outro nome</button></div>';
+  box.append(imgs,info);
+  $('renameChannel').onclick=action(async()=>{await api('/api/templates/'+t.id+'/rename',{});await refresh();notify('Novo nome sugerido.');});
+}
 function showChannelVideos(t){
+  showBrand(t);
   showSales(t);
   $('channelTitle').textContent='Vídeos do canal '+(t.channel||t.name);
   const box=$('channelVideos');box.replaceChildren();
@@ -225,13 +238,16 @@ bind('storeKey',async()=>{
 });
 const number = new Intl.NumberFormat('pt-BR',{notation:'compact',maximumFractionDigits:1});
 const clock=s=>{if(!s)return '—';const h=Math.floor(s/3600),m=Math.floor(s%3600/60),x=String(s%60).padStart(2,'0');return h?h+':'+String(m).padStart(2,'0')+':'+x:m+':'+x;};
-function useAsModel(r){
+async function useAsModel(r){
   inspiration={title:r.title,seconds:r.seconds,per_day:r.per_day,tags:r.tags||[],foreign:lastForeign};
   $('idea').value=r.title;$('baseRef').value='';$('modelInfo').textContent='';
-  const vertical=state.templates.find(t=>t.format==='vertical'), horizontal=state.templates.find(t=>t.format!=='vertical');
-  const pick=r.short?vertical:horizontal; if(pick)$('activeMold').value=pick.id;
+  notify('Criando o canal inspirado em '+r.channel+'…');
+  let made=null;
+  try{made=await api('/api/channel-from-video',{video:r,key:$('key').value,query:$('query').value});await refresh();$('activeMold').value=made.template.id;}
+  catch(e){notify(e.message);}
   $('inspirationInfo').hidden=false;
   $('inspirationInfo').textContent='Modelo: “'+r.title+'” · '+clock(r.seconds)+(r.short?' · Shorts':'')+' · '+number.format(r.per_day)+' views/dia.'+(inspiration.foreign?' Vídeo da gringa: o roteiro vai ADAPTAR o tema para o Brasil.':'')+' O roteiro será ORIGINAL sobre o mesmo tema. Clique em Preparar prompt.';
+  if(made){const t=made.template;$('inspirationInfo').textContent+=' Canal '+(made.created?'criado':'já existente')+': “'+t.name+'” ('+t.niche+'), inspirado em '+((t.source||{}).title||r.channel)+'. Foto de perfil, banner e textos estão em Canais.';}
   page('editor');window.scrollTo(0,0);
 }
 let lastList=[];
