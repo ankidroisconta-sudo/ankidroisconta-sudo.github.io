@@ -9,7 +9,7 @@ window.addEventListener('unhandledrejection',e=>reportError(e.reason?.message||S
 const $ = id => document.getElementById(id);
 const token = document.querySelector('meta[name=studio-token]').content;
 const safe = value => String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
-let state, selected, noticeTimer, inspiration=null, lastForeign=false;
+let state, selected, noticeTimer, inspiration=null, lastForeign=false, lastSearch=null;
 function notify(text) {
   $("notice").textContent = text;
   $("notice").hidden = false;
@@ -102,8 +102,63 @@ function showBrand(t){
   box.append(imgs,info);
   $('renameChannel').onclick=action(async()=>{await api('/api/templates/'+t.id+'/rename',{});await refresh();notify('Novo nome sugerido.');});
 }
+async function showPilot(t){
+  const box=$('pilotBox');if(!box)return;
+  let keys={};try{keys=await api('/api/keys');}catch{}
+  const ap=t.autopilot||{}, yt=t.youtube_channel;
+  box.innerHTML=`
+  <div class="steps-list">
+   <div class="${keys.gemini?'ok':'todo'}"><b>1. Roteiro automático (Gemini, grátis)</b> ${keys.gemini?'· chave salva':''}
+     <p>Crie a chave em <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer">aistudio.google.com/apikey ↗</a> e cole aqui.</p>
+     <div class="row"><input type="password" id="geminiKey" placeholder="Chave do Gemini (começa com AIza)"><button id="saveGemini">Salvar</button></div></div>
+   <div class="${keys.oauth_client?'ok':'todo'}"><b>2. Permissão de envio (uma vez só)</b> ${keys.oauth_client?'· arquivo salvo':''}
+     <p>No Google Cloud: Tela de consentimento OAuth (Externo, adicione seu e-mail como usuário de teste) → Credenciais → Criar ID do cliente OAuth → <b>App para computador</b> → baixar JSON. Envie o arquivo:</p>
+     <input type="file" id="oauthFile" accept=".json,application/json"></div>
+   <div class="${yt?'ok':'todo'}"><b>3. Conectar este canal ao YouTube</b> ${yt?'· conectado a “'+safe(yt.title)+'”':''}
+     <p>Crie o canal no YouTube (ex.: “${safe(t.name)}”) e clique abaixo. Na tela do Google, escolha esse canal.</p>
+     <div class="row"><button id="ytConnect">${yt?'Reconectar':'Conectar ao YouTube'}</button>${yt?'<button id="ytBranding">Aplicar banner e descrição no YouTube</button>':''}</div></div>
+  </div>
+  <h3>Agenda</h3>
+  <div class="row">
+   <label><input type="checkbox" id="apOn" ${ap.enabled?'checked':''} style="width:auto;display:inline"> Piloto automático ligado</label>
+   <label>Vídeos por semana<input type="number" id="apWeek" min="1" max="14" value="${ap.per_week||3}"></label>
+   <label>Produzir às<input type="time" id="apTime" value="${ap.time||'09:00'}"></label>
+  </div>
+  <div class="row">
+   <label>Ao terminar<select id="apPrivacy">
+     <option value="none">Só produzir (não enviar)</option><option value="private">Enviar como privado</option>
+     <option value="scheduled">Enviar e agendar publicação</option><option value="unlisted">Enviar como não listado</option><option value="public">Enviar e publicar</option></select></label>
+   <label>Publicar às (se agendado)<input type="time" id="apPublish" value="${ap.publish_time||'18:00'}"></label>
+  </div>
+  <div class="row"><button class="primary" id="apSave">Salvar agenda</button><button id="apRun">Produzir o próximo vídeo agora</button><button id="apTopics">Ver próximos temas virais</button></div>
+  <p class="hint">O piloto só trabalha com o estúdio aberto e o computador ligado. Projetos de API não verificados pelo Google: o YouTube deixa o vídeo privado; publique pelo YouTube Studio.</p>
+  <div id="apTopicList"></div>
+  <h3>Diário do piloto</h3><div id="apLog">${(ap.log||[]).slice().reverse().map(l=>'<p class="'+(l.error?'err':'')+'">'+safe(l.at.replace('T',' '))+' · '+safe(l.text)+(l.url?' <a target="_blank" rel="noreferrer" href="'+safe(l.url)+'">abrir ↗</a>':'')+'</p>').join('')||'<p>Nada ainda.</p>'}</div>`;
+  $('apPrivacy').value=ap.privacy||'private';
+  bind('saveGemini',async()=>{await api('/api/youtube-key',{name:'gemini',key:$('geminiKey').value.trim()});notify('Chave do Gemini salva.');showPilot(t);});
+  $('oauthFile').onchange=action(async e=>{if(!e.target.files.length)return;const f=new FormData();f.append('file',e.target.files[0]);await api('/api/oauth-client',f);notify('Arquivo de permissão salvo.');showPilot(t);});
+  bind('ytConnect',async()=>{const r=await api('/api/templates/'+t.id+'/youtube/connect',{});window.open(r.url,'_blank');notify('Autorize na aba do Google e depois volte aqui.');
+    const until=Date.now()+300000;const tick=setInterval(async()=>{await refresh();const nt=state.templates.find(x=>x.id===t.id);if(nt?.youtube_channel||Date.now()>until){clearInterval(tick);if(nt?.youtube_channel)notify('Canal conectado: '+nt.youtube_channel.title);}},4000);});
+  if(yt)bind('ytBranding',async()=>{await api('/api/templates/'+t.id+'/youtube/branding',{});notify('Banner e descrição aplicados no YouTube. A foto de perfil troque no YouTube Studio.');});
+  bind('apSave',async()=>{await api('/api/templates/'+t.id+'/autopilot',{enabled:$('apOn').checked,per_week:+$('apWeek').value,time:$('apTime').value,privacy:$('apPrivacy').value,publish_time:$('apPublish').value});await refresh();notify('Agenda salva.');});
+  bind('apRun',async()=>{await api('/api/templates/'+t.id+'/run-now',{});notify('Piloto iniciado: tema, roteiro, vídeo e envio. Acompanhe no diário e em Produção.');setTimeout(refresh,4000);});
+  bind('apTopics',async()=>{
+    $('apTopicList').innerHTML='<p>Buscando temas virais do nicho…</p>';
+    const r=await api('/api/templates/'+t.id+'/topics',{key:$('key').value,competition:true});
+    const list=$('apTopicList');list.innerHTML='<p>Busca do nicho: “'+safe(r.query)+'”. Temas novos (sem repetir o que o canal já fez):</p>';
+    for(const v of r.topics){const el=document.createElement('div');el.className='item';
+      el.innerHTML='<strong></strong><p></p><div class="row"><a target="_blank" rel="noreferrer">ver original ↗</a><button>Gerar roteiro com este tema</button></div>';
+      el.querySelector('strong').textContent=v.title;
+      el.querySelector('p').textContent=Math.round(v.score||0)+'× · '+number.format(v.views)+' views · '+v.channel+' · '+v.origin+(v.comp?' · concorrência no Brasil '+v.comp.level:'');
+      el.querySelector('a').href=v.url;
+      el.querySelector('button').onclick=action(async()=>{notify('Escrevendo o roteiro com o Gemini…');const x=await api('/api/templates/'+t.id+'/script',{topic:v});await refresh();page('editor');editor(x.project.id);notify('Roteiro pronto. Revise e clique em Salvar e produzir.');});
+      list.append(el);}
+    if(!r.topics.length)list.innerHTML+='<p>Nenhum tema novo agora.</p>';
+  });
+}
 function showChannelVideos(t){
   showBrand(t);
+  showPilot(t);
   showSales(t);
   $('channelTitle').textContent='Vídeos do canal '+(t.channel||t.name);
   const box=$('channelVideos');box.replaceChildren();
@@ -113,6 +168,10 @@ function showChannelVideos(t){
   for(const j of done){
     const url='/files/'+j.id+'/', el=document.createElement('div');el.className='item';
     el.innerHTML='<strong>'+safe(j.title)+'</strong><p>'+safe(j.message)+'</p><video controls preload="none" poster="'+url+'thumbnail.jpg" src="'+url+'video.mp4"></video><div class="row"><a href="'+url+'pacote.zip?download=1">Baixar pacote</a><a href="'+url+'publicacao.txt" target="_blank">Título, descrição e comentário fixado</a></div>';
+    const yt=document.createElement('div');yt.className='row';
+    if(j.youtube){yt.innerHTML='<a target="_blank" rel="noreferrer">No YouTube ('+safe(j.youtube.privacy)+') ↗</a>'+(j.youtube.note?'<small>'+safe(j.youtube.note)+'</small>':'');yt.querySelector('a').href=j.youtube.url;}
+    else if(t.youtube_channel){const b=document.createElement('button');b.textContent='Enviar ao YouTube (privado)';b.onclick=action(async()=>{notify('Enviando… pode levar alguns minutos.');const r=await api('/api/jobs/'+j.id+'/upload',{privacy:'private'});await refresh();notify('Enviado: '+r.result.url+(r.note?' · '+r.note:''));});yt.append(b);}
+    el.append(yt);
     box.append(el);
   }
   for(const p of pending){
@@ -254,7 +313,7 @@ async function useAsModel(r){
   $('idea').value=r.title;$('baseRef').value='';$('modelInfo').textContent='';
   notify('Criando o canal inspirado em '+r.channel+'…');
   let made=null;
-  try{made=await api('/api/channel-from-video',{video:r,key:$('key').value,query:$('query').value});await refresh();$('activeMold').value=made.template.id;}
+  try{made=await api('/api/channel-from-video',{video:r,key:$('key').value,query:$('query').value,search:lastSearch});await refresh();$('activeMold').value=made.template.id;}
   catch(e){notify(e.message);}
   $('inspirationInfo').hidden=false;
   $('inspirationInfo').textContent='Modelo: “'+r.title+'” · '+clock(r.seconds)+(r.short?' · Shorts':'')+' · '+number.format(r.per_day)+' views/dia.'+(inspiration.foreign?' Vídeo da gringa: o roteiro vai ADAPTAR o tema para o Brasil.':'')+' O roteiro será ORIGINAL sobre o mesmo tema. Clique em Preparar prompt.';
@@ -351,6 +410,7 @@ $('hunt').onsubmit=action(async e=>{
     lastForeign=region!=='BR'&&region!=='PT';
     const r=await api('/api/research',{query,key:$('key').value,mode,days:$('days').value,language,region,sort,max_subs:maxSubs,category:$('category').value,channel_months:$('months').value});
     const list=r.results;
+    lastSearch={query:r.query_used||query,region,language};
     showResults(list,query,r.cached);
     if(r.query_note)$('count').textContent+=' · '+r.query_note;
     if(r.niche)$('count').textContent+=' · '+r.niche.level+': '+r.niche.channels_winning+' canais diferentes acertando ('+r.niche.small_channels_winning+' pequenos)';

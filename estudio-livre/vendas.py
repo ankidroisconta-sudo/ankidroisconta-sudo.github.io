@@ -114,7 +114,7 @@ THEMES = {
                      icons=['eye', 'scroll', 'book', 'flame', 'star']),
     'culinaria': dict(words='receita air fryer cozinha culinár doce bolo comida recipe cooking kitchen receta cocina', mode='light', accent='#d9481c', head='impact', glyph='✱',
                       icons=['flame', 'clock', 'check', 'book', 'heart']),
-    'ciencia': dict(words='universo espaço espaco planeta galáxia galaxia estrela cosmos ciência ciencia física fisica terra buraco negro universe space planet galaxy stars science physics black hole nasa espacio', mode='dark',
+    'ciencia': dict(words='universo espaço espaco planeta galáxia galaxia estrela cosmos ciência ciencia física fisica terra buraco negro universe space planet galaxy stars science physics black hole nasa espacio moon moons solar quasar nebula astronaut orbit cosmic', mode='dark',
                     accent='#7c9cff', head='impact', glyph='✦', icons=['star', 'eye', 'bolt', 'clock', 'book']),
 }
 DEFAULT_THEME = dict(mode='dark', accent='#ffd84d', head='impact', glyph='★', icons=['book', 'check', 'bolt', 'star', 'clock'])

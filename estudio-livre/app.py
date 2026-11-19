@@ -15,6 +15,7 @@ import uuid
 import wave
 import zipfile
 import edicao
+import piloto
 import marca
 import vendas
 import modelagem as model
@@ -277,6 +278,9 @@ def channel_from_video():
         plan = marca.channel_plan(video, source, taken, topic=topic)
         item = clean_template(plan)
         item.update(id=ident(), about=plan['about'], footer=plan['footer'], theme=plan['theme'], source=plan['source'], topic=topic)
+        search = d.get('search') or {}
+        if search.get('query'):
+            item['search'] = {'query': str(search['query'])[:120], 'region': str(search.get('region', 'US'))[:2].upper(), 'language': str(search.get('language', 'en'))[:5]}
         state['templates'].append(item)
         persist()
     build_brand(item)
@@ -430,12 +434,16 @@ def reference_plan():
 def prompt():
     d = request.get_json()
     with LOCK: t = copy.deepcopy(find('templates', d['template_id']))
+    return jsonify(prompt=build_prompt(t, str(d.get('idea', '')), d.get('inspiration') or {}, d.get('reference', '')))
+
+def build_prompt(t, idea, model=None, reference=''):
+    d = {'idea': idea, 'reference': reference}
     example = {'title': 'Título original', 'description': 'Descrição e fontes verificadas', 'tags': ['tema'],
                'thumbnail_text': 'Até seis palavras', 'scenes': [{'text': 'Narração completa desta cena.',
                'caption': 'Frase curta na tela', 'visual': 'city skyline at night, people walking street, aerial traffic'}]}
     guide='Divida a narração em cenas de 15 a 35 segundos.'
     minutes = t['minutes']
-    model = d.get('inspiration') or {}
+    model = model or {}
     inspiration = ''
     if model.get('title'):
         seconds = max(15, min(3600, int(model.get('seconds') or 0) or int(t['minutes'] * 60)))
@@ -462,7 +470,7 @@ def prompt():
     if d.get('reference'):
         _,profile=reference_profile(d['reference'])
         guide='Siga a ordem e os tempos do modelo. Duração total: '+str(round(profile['duracao'],2))+' segundos. Ignore a duração do molde do canal. Planos (segundos): '+json.dumps([(round(x['inicio'],2),round(x['fim'],2),x['tipo']) for x in profile['planos']],ensure_ascii=False)
-    return jsonify(prompt=f'''Crie um roteiro ORIGINAL sobre: {str(d.get('idea', ''))[:4000]}.
+    return (f'''Crie um roteiro ORIGINAL sobre: {str(d.get('idea', ''))[:4000]}.
 Canal: {t['channel']}. Nicho: {t['niche']}. Idioma: {t['language']}.
 Duração pretendida: {minutes} minutos, aproximadamente {round(minutes * 145)} palavras.{inspiration}
 Orientações editoriais: {t['instructions']}
@@ -493,11 +501,26 @@ def youtube(endpoint, params, key):
 
 KEY_DIR = Path(os.environ.get('LOCALAPPDATA', DATA)) / 'EstudioLivre'
 KEY_PATH = KEY_DIR / 'youtube.dpapi'
-KEY_NAMES = ('youtube', 'pexels', 'pixabay')
+KEY_NAMES = ('youtube', 'pexels', 'pixabay', 'gemini')
+
+def save_secret(name, value):
+    KEY_DIR.mkdir(parents=True, exist_ok=True)
+    target = KEY_DIR / f'{name}.dpapi'
+    if WINDOWS:
+        data = windows_secret(value)
+    else:  # fora do Windows (testes): arquivo só do usuário
+        data = 'plain:' + value
+    tmp = target.with_suffix('.tmp'); tmp.write_text(data, 'ascii'); tmp.replace(target)
+
+def read_secret(name):
+    path = KEY_DIR / f'{name}.dpapi'
+    if not path.is_file(): return ''
+    raw = path.read_text('ascii')
+    if raw.startswith('plain:'): return raw[6:]
+    return windows_secret(raw, decrypt=True) if WINDOWS else ''
 
 def read_key(name):
-    path = KEY_DIR / f'{name}.dpapi'
-    return windows_secret(path.read_text('ascii'), decrypt=True) if WINDOWS and path.is_file() else ''
+    return os.environ.get(name.upper() + '_API_KEY', '') or read_secret(name)
 
 def windows_secret(value, decrypt=False):
     if not WINDOWS: raise ValueError('Salvar a chave criptografada só funciona no Windows. Cole a chave no campo a cada pesquisa.')
@@ -515,11 +538,13 @@ def windows_secret(value, decrypt=False):
     return result.stdout.strip()
 
 def stored_youtube_key():
-    return windows_secret(KEY_PATH.read_text('ascii'), decrypt=True) if KEY_PATH.is_file() else ''
+    return read_key('youtube')
 
 @app.get('/api/keys')
 def list_keys():
-    return jsonify({n: bool(os.environ.get(n.upper() + '_API_KEY') or (KEY_DIR / f'{n}.dpapi').is_file()) for n in KEY_NAMES})
+    out = {n: bool(os.environ.get(n.upper() + '_API_KEY') or (KEY_DIR / f'{n}.dpapi').is_file()) for n in KEY_NAMES}
+    out['oauth_client'] = (KEY_DIR / 'oauth_client.json').is_file()
+    return jsonify(out)
 
 @app.post('/api/youtube-key')
 def store_youtube_key():
@@ -529,13 +554,7 @@ def store_youtube_key():
     value = str(d.get('key', '')).strip()
     if not 20 <= len(value) <= 256 or not value.isascii() or not value.isprintable():
         raise ValueError('Chave inválida.')
-    encrypted = windows_secret(value)
-    KEY_DIR.mkdir(parents=True, exist_ok=True)
-    with LOCK:
-        target = KEY_DIR / f'{name}.dpapi'
-        temporary = target.with_suffix('.tmp')
-        temporary.write_text(encrypted, 'ascii')
-        temporary.replace(target)
+    with LOCK: save_secret(name, value)
     return jsonify(ok=True)
 
 CACHE_TTL = 6 * 3600
@@ -851,8 +870,10 @@ def research():
 
 @app.post('/api/queue')
 def enqueue():
-    d = request.get_json()
-    ids = d.get('ids', [])
+    added = queue_projects(request.get_json().get('ids', []))
+    return jsonify(ok=True, added=len(added))
+
+def queue_projects(ids):
     if not ids: raise ValueError('Selecione ao menos um vídeo.')
     if not shutil.which('ffmpeg'): raise ValueError('FFmpeg não encontrado. Veja o guia de instalação.')
     with LOCK:
@@ -870,7 +891,7 @@ def enqueue():
             state['jobs'].append(job); jobs.append((job['id'], p, t))
         persist()
         for task in jobs: TASKS.put(task)
-    return jsonify(ok=True, added=len(jobs))
+    return [j[0] for j in jobs]
 
 @app.post('/api/jobs/<jid>/cancel')
 def cancel(jid):
@@ -1157,6 +1178,304 @@ def worker():
             cleanup(DATA/'renders'/jid)
         finally: TASKS.task_done()
 
+# ======================================================================
+# Piloto automático: tema viral -> roteiro (Gemini) -> vídeo -> YouTube
+# ======================================================================
+THEME_QUERY = {'ciencia': 'space facts universe', 'historia': 'history facts', 'financas': 'money facts', 'plantas': 'container gardening',
+               'pets': 'dog facts', 'mente': 'psychology facts', 'culinaria': 'cooking hacks'}
+PILOT_LOCK = threading.Lock()
+RUNNING = set()
+
+def pilot_log(tid, text, **extra):
+    with LOCK:
+        t = find('templates', tid)
+        ap = t.setdefault('autopilot', {})
+        ap.setdefault('log', []).append(dict(at=datetime.now().isoformat(timespec='minutes'), text=text, **extra))
+        ap['log'] = ap['log'][-30:]
+        persist()
+
+def channel_query(t):
+    s = t.get('search') or {}
+    if s.get('query'): return s['query'], s.get('region', 'US'), s.get('language', 'en')
+    if t.get('theme') in THEME_QUERY: return THEME_QUERY[t['theme']], 'US', 'en'
+    topic = t.get('topic') or t.get('niche', '')
+    english = to_english(topic) if topic else ''
+    return (english or topic or 'interesting facts'), 'US', 'en'
+
+def next_topics(t, key, limit=8, check_competition=False):
+    """Temas candidatos para o próximo vídeo do canal, sem repetir o que já foi usado."""
+    used = {x.lower() for x in t.get('used_topics', [])}
+    with LOCK:
+        used |= {p['title'].lower() for p in state['projects'] if p['template_id'] == t['id']}
+        used |= {(p.get('inspiration') or {}).get('title', '').lower() for p in state['projects'] if p['template_id'] == t['id']}
+    found = {}
+    src = (t.get('source') or {}).get('channel_id', '')
+    if re.fullmatch(r'UC[\w-]{22}', src or ''):
+        try:
+            ch = youtube('channels', {'part': 'contentDetails,statistics', 'id': src}, key)
+            if ch:
+                items = youtube('playlistItems', {'part': 'contentDetails', 'playlistId': ch[0]['contentDetails']['relatedPlaylists']['uploads'], 'maxResults': 50}, key)
+                ids = ','.join(x['contentDetails']['videoId'] for x in items)
+                for v in enrich(youtube('videos', {'part': 'snippet,statistics,contentDetails', 'id': ids}, key), key) if ids else []:
+                    if v['score'] and v['score'] >= 1: found[v['id']] = dict(v, origin='canal de inspiração')
+        except ValueError:
+            pass
+    query, region, language = channel_query(t)
+    vertical = t.get('format') == 'vertical'
+    params = {'part': 'snippet', 'type': 'video', 'q': query, 'maxResults': 50, 'order': 'viewCount', 'regionCode': region,
+              'relevanceLanguage': language, 'videoDuration': 'short' if vertical else 'medium',
+              'publishedAfter': (datetime.now(timezone.utc) - timedelta(days=60)).strftime('%Y-%m-%dT%H:%M:%SZ')}
+    try:
+        ids = ','.join(x['id']['videoId'] for x in youtube('search', params, key) if x.get('id', {}).get('videoId'))
+        for v in enrich(youtube('videos', {'part': 'snippet,statistics,contentDetails', 'id': ids}, key), key) if ids else []:
+            if v['score'] and v['score'] >= 3 and (v['subscribers'] or 0) <= 200000: found.setdefault(v['id'], dict(v, origin='nicho'))
+    except ValueError:
+        pass
+    pool = [v for v in found.values() if v['title'].lower() not in used and v['id'] not in used
+            and not re.search(r'[ऀ-෿؀-ۿ฀-๿]', v['title'])
+            and (v['short'] == vertical or not v['seconds'])]
+    # Só temas do nicho do canal (palavras do tema ou da busca no título/tags); se sobrar pouco, mantém a lista larga.
+    theme = vendas.THEMES.get(t.get('theme', ''), {})
+    words = set((theme.get('words', '') + ' ' + query).lower().split()) - STOPWORDS
+    words = {w for w in words if len(w) > 3}
+    if words:
+        on_niche = [v for v in pool if any(w in plainword(v['title'] + ' ' + ' '.join(v.get('tags', []))) for w in words)]
+        if len(on_niche) >= 3: pool = on_niche
+    for v in pool:
+        v['rank'] = round(math.log10((v['score'] or 1) + 1) * math.log10(v['per_day'] + 10), 2)
+    pool.sort(key=lambda v: v['rank'], reverse=True)
+    pool = pool[:limit]
+    if check_competition:
+        for v in pool[:3]:
+            title = re.sub(r'#\S+', ' ', v['title'])
+            pt = title if looks_portuguese(title) else to_portuguese(title)
+            if pt:
+                try:
+                    v['comp'] = competition(topic_terms(pt, 4), 'BR', 'pt', key)
+                except ValueError:
+                    pass
+        pool.sort(key=lambda v: v['rank'] * (1 - (v.get('comp') or {}).get('score', 30) / 120), reverse=True)
+    return pool
+
+def write_script(t, topic):
+    """Roteiro original com o Gemini, no estilo e na duração do canal."""
+    gkey = read_key('gemini')
+    if not gkey: raise ValueError('Falta a chave grátis do Gemini (Canais > Piloto automático).')
+    model = {'title': topic['title'], 'seconds': int(t['minutes'] * 60), 'per_day': topic.get('per_day', '?'), 'tags': topic.get('tags', []),
+             'foreign': not looks_portuguese(topic['title'])}
+    data = piloto.gemini_json(build_prompt(t, topic['title'], model), gkey)
+    if isinstance(data, list): data = data[0]
+    if not isinstance(data, dict) or len(data.get('scenes') or []) < 3: raise ValueError('O Gemini devolveu um roteiro sem cenas suficientes.')
+    with LOCK:
+        p = clean_project(data, t['id'])
+        p['inspiration'] = {'title': topic['title'], 'url': topic.get('url', ''), 'channel': topic.get('channel', '')}
+        p['auto'] = True
+        state['projects'].append(p)
+        t2 = find('templates', t['id'])
+        t2.setdefault('used_topics', []).extend([topic['title'], topic.get('id', '')])
+        t2['used_topics'] = t2['used_topics'][-300:]
+        persist()
+    return p
+
+def wait_job(jid, limit=4 * 3600):
+    start = time.time()
+    while time.time() - start < limit:
+        with LOCK: j = copy.deepcopy(find('jobs', jid))
+        if j['status'] in ('done', 'error', 'cancelled'): return j
+        time.sleep(10)
+    raise ValueError('A produção demorou demais.')
+
+def youtube_token(tid):
+    client_path = KEY_DIR / 'oauth_client.json'
+    refresh = read_secret(f'yt-{tid}')
+    if not client_path.is_file() or not refresh: return None
+    return piloto.access_token(piloto.client_info(client_path), refresh)
+
+def upload_job(jid, privacy=None, publish_at=''):
+    with LOCK:
+        j = copy.deepcopy(find('jobs', jid)); p = copy.deepcopy(find('projects', j['project_id'])); t = copy.deepcopy(find('templates', p['template_id']))
+    if j['status'] != 'done': raise ValueError('O vídeo ainda não está pronto.')
+    token = youtube_token(t['id'])
+    if not token: raise ValueError('Conecte este canal ao YouTube primeiro (Canais > Piloto automático).')
+    folder = DATA / 'renders' / jid
+    credits = (folder / 'creditos.txt').read_text('utf-8') if (folder / 'creditos.txt').is_file() else ''
+    needed = []  # só créditos que a licença exige (CC BY); Pixabay e domínio público não exigem
+    for block in credits.split('\n\n'):
+        if re.search(r'CC BY', block):
+            obra = re.search(r'obra: (.*)', block); autor = re.search(r'autor: (.*)', block); fonte = re.search(r'fonte: (.*)', block)
+            needed.append(' – '.join(x.group(1) for x in (obra, autor, fonte) if x))
+    desc = p['description'].strip()
+    if t.get('ebook_name') and t.get('ebook_link'): desc += f"\n\n📘 {t['ebook_name']}: {t['ebook_link']}"
+    if t.get('footer'): desc += '\n\n' + t['footer']
+    if needed: desc += '\n\nCréditos de imagens e vídeos:\n' + '\n'.join(dict.fromkeys(needed))[:1500]
+    privacy = privacy or (t.get('autopilot') or {}).get('privacy', 'private')
+    meta = {'title': p['title'], 'description': desc, 'tags': p.get('tags', []), 'category': piloto.CATEGORY.get(t.get('theme', ''), '27')}
+    result = piloto.upload_video(token, folder / 'video.mp4', meta, 'private' if privacy == 'scheduled' else privacy, publish_at)
+    note = piloto.set_thumbnail(token, result['id'], folder / 'thumbnail.jpg')
+    wanted = 'private' if privacy == 'scheduled' else privacy
+    if result['privacy'] == 'private' and wanted != 'private':
+        note += ' O YouTube deixou o vídeo PRIVADO porque o projeto da API ainda não foi verificado pelo Google; publique pelo YouTube Studio.'
+    with LOCK:
+        find('jobs', jid)['youtube'] = dict(result, note=note.strip(), at=datetime.now().isoformat(timespec='minutes'))
+        persist()
+    return result, note.strip()
+
+def publish_time(t):
+    ap = t.get('autopilot') or {}
+    hh, mm = (ap.get('publish_time') or '18:00').split(':')
+    local = datetime.now().astimezone()
+    when = local.replace(hour=int(hh), minute=int(mm), second=0, microsecond=0)
+    if when < local + timedelta(hours=1): when += timedelta(days=1)
+    return when.astimezone(timezone.utc).strftime('%Y-%m-%dT%H:%M:%S.000Z')
+
+def run_next(tid):
+    """Um ciclo completo do piloto automático para um canal."""
+    if tid in RUNNING: return
+    RUNNING.add(tid)
+    try:
+        with LOCK: t = copy.deepcopy(find('templates', tid))
+        key = stored_youtube_key()
+        if not key: raise ValueError('Falta a chave do YouTube (Ideias > Filtros).')
+        pilot_log(tid, 'Procurando o próximo tema viral do nicho…')
+        topics = next_topics(t, key, check_competition=True)
+        if not topics: raise ValueError('Nenhum tema novo encontrado agora. Tente mais tarde.')
+        topic = topics[0]
+        pilot_log(tid, f"Tema escolhido: {topic['title']} ({round(topic['score'] or 0)}× · {topic['channel']})", url=topic.get('url', ''))
+        p = write_script(t, topic)
+        pilot_log(tid, f"Roteiro pronto: {p['title']} ({len(p['scenes'])} cenas)")
+        jid = queue_projects([p['id']])[0]
+        j = wait_job(jid)
+        if j['status'] != 'done': raise ValueError('A produção falhou: ' + j.get('message', '')[:200])
+        pilot_log(tid, f"Vídeo produzido: {p['title']}")
+        privacy = (t.get('autopilot') or {}).get('privacy', 'none')
+        if privacy != 'none':
+            if youtube_token(tid):
+                result, note = upload_job(jid, privacy, publish_time(t) if privacy == 'scheduled' else '')
+                pilot_log(tid, f"Enviado ao YouTube ({result['privacy']}): {result['url']}" + (f' · {note}' if note else ''), url=result['url'])
+            else:
+                pilot_log(tid, 'Vídeo pronto, mas o canal não está conectado ao YouTube; envio pendente.')
+    except Exception as exc:
+        pilot_log(tid, 'Erro: ' + str(exc)[:300], error=True)
+    finally:
+        RUNNING.discard(tid)
+        with LOCK:
+            try:
+                find('templates', tid).setdefault('autopilot', {})['last_run'] = datetime.now().isoformat(timespec='minutes'); persist()
+            except ValueError:
+                pass
+
+def autopilot_loop():
+    """Confere a agenda a cada minuto (enquanto o estúdio estiver aberto)."""
+    while True:
+        try:
+            now = datetime.now()
+            with LOCK: channels = copy.deepcopy(state['templates'])
+            for t in channels:
+                ap = t.get('autopilot') or {}
+                if not ap.get('enabled') or t['id'] in RUNNING: continue
+                hh, mm = (ap.get('time') or '09:00').split(':')
+                if (now.hour, now.minute) < (int(hh), int(mm)): continue
+                every = 7 / max(1, min(14, int(ap.get('per_week', 3))))
+                last = datetime.fromisoformat(ap['last_run']) if ap.get('last_run') else None
+                if last and (now - last).total_seconds() < every * 86400 * 0.97: continue
+                threading.Thread(target=run_next, args=(t['id'],), daemon=True).start()
+        except Exception as exc:
+            print('Piloto automático:', exc, flush=True)
+        time.sleep(60)
+
+@app.post('/api/templates/<tid>/topics')
+def topics_route(tid):
+    with LOCK: t = copy.deepcopy(find('templates', tid))
+    key = str(request.get_json().get('key', '')).strip() or stored_youtube_key()
+    if not key: raise ValueError('Configure a chave do YouTube.')
+    return jsonify(topics=next_topics(t, key, check_competition=bool(request.get_json().get('competition'))), query=channel_query(t)[0])
+
+@app.post('/api/templates/<tid>/script')
+def script_route(tid):
+    with LOCK: t = copy.deepcopy(find('templates', tid))
+    topic = request.get_json().get('topic') or {}
+    if not topic.get('title'): raise ValueError('Escolha um tema.')
+    return jsonify(project=write_script(t, topic))
+
+@app.post('/api/templates/<tid>/autopilot')
+def autopilot_settings(tid):
+    d = request.get_json()
+    with LOCK:
+        t = find('templates', tid)
+        ap = t.setdefault('autopilot', {})
+        ap['enabled'] = bool(d.get('enabled'))
+        ap['per_week'] = max(1, min(14, int(d.get('per_week', 3))))
+        for k, default in (('time', '09:00'), ('publish_time', '18:00')):
+            v = str(d.get(k, ap.get(k, default)))
+            if not re.fullmatch(r'([01]\d|2[0-3]):[0-5]\d', v): raise ValueError('Horário inválido.')
+            ap[k] = v
+        privacy = d.get('privacy', 'private')
+        if privacy not in ('none', 'private', 'unlisted', 'public', 'scheduled'): raise ValueError('Opção de envio inválida.')
+        ap['privacy'] = privacy
+        persist()
+    return jsonify(autopilot=ap)
+
+@app.post('/api/templates/<tid>/run-now')
+def run_now(tid):
+    with LOCK: find('templates', tid)
+    if tid in RUNNING: raise ValueError('O piloto automático já está trabalhando neste canal.')
+    threading.Thread(target=run_next, args=(tid,), daemon=True).start()
+    return jsonify(ok=True)
+
+@app.post('/api/oauth-client')
+def oauth_client():
+    upload = request.files['file']
+    tmp = DATA / 'oauth-tmp.json'
+    upload.save(tmp)
+    try:
+        piloto.client_info(tmp)
+        KEY_DIR.mkdir(parents=True, exist_ok=True)
+        tmp.replace(KEY_DIR / 'oauth_client.json')
+    finally:
+        tmp.unlink(missing_ok=True)
+    return jsonify(ok=True)
+
+OAUTH_STATES = {}
+
+@app.post('/api/templates/<tid>/youtube/connect')
+def youtube_connect(tid):
+    with LOCK: find('templates', tid)
+    path = KEY_DIR / 'oauth_client.json'
+    if not path.is_file(): raise ValueError('Envie primeiro o arquivo JSON do ID do cliente OAuth.')
+    state_id = piloto.new_state(); OAUTH_STATES[state_id] = tid
+    redirect = f'http://{request.host}/oauth/callback'
+    return jsonify(url=piloto.auth_link(piloto.client_info(path), redirect, state_id))
+
+@app.get('/oauth/callback')
+def oauth_callback():
+    tid = OAUTH_STATES.pop(request.args.get('state', ''), None)
+    if not tid: return 'Pedido de autorização inválido ou expirado. Volte ao estúdio e clique em Conectar de novo.', 400
+    if request.args.get('error'): return 'Autorização cancelada. Pode fechar esta aba.', 400
+    client = piloto.client_info(KEY_DIR / 'oauth_client.json')
+    data = piloto.exchange_code(client, request.args.get('code', ''), f'http://{request.host}/oauth/callback')
+    save_secret(f'yt-{tid}', data['refresh_token'])
+    channel = piloto.my_channel(data['access_token'])
+    with LOCK:
+        find('templates', tid)['youtube_channel'] = channel; persist()
+    return f'<meta charset="utf-8"><body style="font-family:sans-serif;padding:40px"><h2>Canal conectado: {channel["title"]}</h2><p>Pode fechar esta aba e voltar ao Estúdio Livre.</p></body>'
+
+@app.post('/api/jobs/<jid>/upload')
+def upload_route(jid):
+    privacy = request.get_json().get('privacy', 'private')
+    if privacy not in ('private', 'unlisted', 'public'): raise ValueError('Opção inválida.')
+    result, note = upload_job(jid, privacy)
+    return jsonify(result=result, note=note)
+
+@app.post('/api/templates/<tid>/youtube/branding')
+def branding_route(tid):
+    with LOCK: t = copy.deepcopy(find('templates', tid))
+    token = youtube_token(tid)
+    if not token: raise ValueError('Conecte este canal ao YouTube primeiro.')
+    folder = brand_folder(tid)
+    if not (folder / 'banner.jpg').is_file(): build_brand(t)
+    piloto.apply_branding(token, t['youtube_channel']['id'], folder / 'banner.jpg', t.get('about', ''), t.get('niche', ''))
+    return jsonify(ok=True)
+
 @app.get('/files/<jid>/<name>')
 def files(jid, name):
     if not re.fullmatch('[a-f0-9]{32}', jid) or name not in ('video.mp4', 'thumbnail.jpg', 'legendas.srt', 'projeto.json', 'publicacao.txt', 'pacote.zip'):
@@ -1176,6 +1495,7 @@ def backup():
 
 if __name__ == '__main__':
     threading.Thread(target=worker, daemon=True).start()
+    threading.Thread(target=autopilot_loop, daemon=True).start()
     port = int(os.environ.get('STUDIO_PORT', '8765'))
     print(f'Abra http://127.0.0.1:{port} — mantenha esta janela aberta durante a produção.', flush=True)
     app.run(host='127.0.0.1', port=port, debug=False, threaded=True)
