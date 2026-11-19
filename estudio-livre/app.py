@@ -690,7 +690,7 @@ def research():
     results = sorted(results, key=keyf, reverse=True)
     # Força do nicho: quantos canais diferentes acertaram (views >= 3x inscritos) nesta busca.
     winners = {r['channel_id'] for r in results if r['score'] and r['score'] >= 3}
-    small = {r['channel_id'] for r in results if r['score'] and r['score'] >= 3 and (r['subscribers'] or 0) <= 100000}
+    small = {r['channel_id'] for r in results if r['score'] and r['score'] >= 3 and r['subscribers'] is not None and r['subscribers'] <= 100000}
     niche = {'channels_winning': len(winners), 'small_channels_winning': len(small),
              'level': 'Nicho forte' if len(winners) >= 8 else 'Nicho médio' if len(winners) >= 4 else 'Nicho fraco'}
     return jsonify(results=results, cached=cached, niche=niche)

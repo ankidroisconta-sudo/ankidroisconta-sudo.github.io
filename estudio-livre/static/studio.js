@@ -216,7 +216,7 @@ bind('storeKey',async()=>{
   notify('Chave salva no perfil do Windows.');
 });
 const number = new Intl.NumberFormat('pt-BR',{notation:'compact',maximumFractionDigits:1});
-const clock=s=>s?Math.floor(s/60)+':'+String(s%60).padStart(2,'0'):'—';
+const clock=s=>{if(!s)return '—';const h=Math.floor(s/3600),m=Math.floor(s%3600/60),x=String(s%60).padStart(2,'0');return h?h+':'+String(m).padStart(2,'0')+':'+x:m+':'+x;};
 function useAsModel(r){
   inspiration={title:r.title,seconds:r.seconds,per_day:r.per_day,tags:r.tags||[],foreign:lastForeign};
   $('idea').value=r.title;$('baseRef').value='';$('modelInfo').textContent='';
