@@ -221,8 +221,8 @@ $('hunt').onsubmit=action(async e=>{
   $('search').textContent='Buscando…';
   try {
     const gringa=$('mode').value.startsWith('gringa');
-    const small=$('mode').value==='gringa_small';
-    const mode=gringa?($('mode').value==='gringa_shorts'?'shorts':'videos'):$('mode').value;
+    const small=['gringa_small','gringa_long'].includes($('mode').value);
+    const mode=gringa?({gringa_shorts:'shorts',gringa_long:'long'}[$('mode').value]||'videos'):$('mode').value;
     const sort=small?'score':$('sort').value, maxSubs=small?($('maxSubs').value||100000):$('maxSubs').value;
     const region=gringa?'US':$('region').value, language=gringa?'en':$('lang').value;
     lastForeign=region!=='BR'&&region!=='PT';

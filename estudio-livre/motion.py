@@ -19,7 +19,7 @@ from midia import load_font
 
 FPS = 30
 NO_WINDOW = 0x08000000 if os.name == 'nt' else 0
-NUMBER = re.compile(r'(\d{1,3}(?:[.\s]\d{3})+|\d+(?:,\d+)?)\s*(%|por cento|mil|milhões|milhão|bilhões|bilhão|'
+NUMBER = re.compile(r'(\d{1,3}(?:[.\s]\d{3})+|\d+(?:,\d+)?)\s*(%|por cento|milhões|milhão|bilhões|bilhão|mil|'
                     r'[a-záéíóúâêôãõç]+)?', re.I)
 
 
@@ -83,12 +83,20 @@ def headline(scene):
     return text.rstrip('.')
 
 
+SKIP_UNITS = set('o a os as e de do da dos das em no na que pelo pela por para com um uma ao é foi'.split())
+
+
 def find_number(text):
     for m in NUMBER.finditer(text):
         raw = m.group(1)
         value = float(raw.replace('.', '').replace(' ', '').replace(',', '.'))
-        if value >= 2 or '%' in (m.group(2) or ''):
-            return raw, value, (m.group(2) or '').strip()
+        unit = (m.group(2) or '').strip()
+        if unit.lower() in SKIP_UNITS:
+            unit = ''
+        if re.fullmatch(r'1[0-9]{3}|20[0-9]{2}', raw):
+            return raw, value, unit, True  # ano: mostra sem contar e sem separador de milhar
+        if value >= 2 or '%' in unit:
+            return raw, value, unit, False
     return None
 
 
@@ -148,12 +156,12 @@ def render(scene, size, seconds, accent, channel, seed, out):
                 d.text((x, y), word, font=font, fill=(shade, shade, shade))
                 x_by_line[li] = x + d.textlength(word + ' ', font=font)
             if number:
-                raw, value, unit = number
+                raw, value, unit, year = number
                 k = ease((t - 0.5) / 1.4)
                 if k > 0:
                     shown = value * k
                     decimals = 1 if ',' in raw else 0
-                    txt = f'{shown:,.{decimals}f}'.replace(',', 'X').replace('.', ',').replace('X', '.')
+                    txt = raw if year else f'{shown:,.{decimals}f}'.replace(',', 'X').replace('.', ',').replace('X', '.')
                     ny = y0 + block + int(h * 0.04)
                     d.text((margin, ny), txt, font=big, fill=acc)
                     if unit:

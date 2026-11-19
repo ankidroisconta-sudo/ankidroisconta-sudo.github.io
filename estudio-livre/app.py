@@ -425,7 +425,7 @@ def research():
     key = str(d.get('key', '')).strip()
     if not key: key = stored_youtube_key() or os.environ.get('YOUTUBE_API_KEY', '')
     if not key: raise ValueError('Configure a chave do YouTube ou use a pesquisa manual.')
-    mode = d.get('mode', 'videos') if d.get('mode') in ('videos', 'shorts', 'trending', 'channels') else 'videos'
+    mode = d.get('mode', 'videos') if d.get('mode') in ('videos', 'shorts', 'long', 'trending', 'channels') else 'videos'
     region = str(d.get('region', 'BR'))[:2].upper()
     if not re.fullmatch('[A-Z]{2}', region): region = 'BR'
     language = str(d.get('language', 'pt'))[:5]
@@ -444,14 +444,26 @@ def research():
              'regionCode': region, 'relevanceLanguage': language,
              'publishedAfter': (datetime.now(timezone.utc) - timedelta(days=days)).strftime('%Y-%m-%dT%H:%M:%SZ')}
         if mode == 'shorts': p['videoDuration'] = 'short'
-        ids = ','.join(x['id']['videoId'] for x in youtube('search', p, key) if x.get('id', {}).get('videoId'))
+        found = []
+        for duration in (('medium', 'long') if mode == 'long' else (p.get('videoDuration'),)):
+            if duration: p['videoDuration'] = duration
+            found += [x['id']['videoId'] for x in youtube('search', p, key) if x.get('id', {}).get('videoId')]
+        ids = list(dict.fromkeys(found))
         if not ids: return []
-        return enrich(youtube('videos', {'part': 'snippet,statistics,contentDetails', 'id': ids}, key), key)
+        videos = []
+        for i in range(0, len(ids), 50):
+            videos += youtube('videos', {'part': 'snippet,statistics,contentDetails', 'id': ','.join(ids[i:i + 50])}, key)
+        return enrich(videos, key)
 
     results, cached = research_cached(params, run_query)
     months = max(1, min(120, int(d.get('channel_months', 12))))
     if mode == 'shorts':
         results = [r for r in results if r['short']]
+    if mode == 'long':
+        results = [r for r in results if r['seconds'] >= 480]
+    # Remove resultados em escritas que não servem para adaptar (ex.: hindi), mesmo com região definida.
+    results = [r for r in results if not re.search(r'[\u0900-\u0DFF\u0600-\u06FF\u0E00-\u0E7F]', r['title'])
+               and not re.search(r'\b(hindi|urdu|bangla|tamil|telugu)\b', r['title'], re.I)]
     if mode == 'channels':
         limit = datetime.now(timezone.utc) - timedelta(days=30 * months)
         seen, unique = set(), []
